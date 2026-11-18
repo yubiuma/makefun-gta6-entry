@@ -110,6 +110,8 @@ export function createCity(random) {
         specials[special.key] = {
           key: special.key,
           name: special.name,
+          col: special.col,
+          row: special.row,
           x: building.x + building.w / 2,
           y: building.y + building.h + CITY.pavement / 2 + 4,
           building,
@@ -148,17 +150,23 @@ export function createCity(random) {
     }
   }
 
-  // Kerbside parking: cars tucked against the left kerb of streets, clear of junctions.
+  // Kerbside parking: cars tucked on the pavement against the buildings, clear of
+  // junctions — and clear of the traffic lanes, which a 72px street is too narrow
+  // to share with a parked car (a kerbside car in the lane jams it for good).
   const parkedSpawns = [];
   for (let tries = 0; tries < 400 && parkedSpawns.length < 30; tries += 1) {
     const vertical = random() < 0.5;
     const line = rangeInt(random, 0, CITY.cols);
     const blockIndex = rangeInt(random, 0, CITY.cols - 1);
     const along = blockIndex * CITY.pitch + CITY.road + range(random, 26, CITY.block - 26);
+    // The outermost streets have no block on their outer side: park on the inner
+    // pavement instead, or the car ends up half off the map.
     if (vertical) {
-      parkedSpawns.push({ x: streetCenterX(line) - CITY.road / 2 + 14, y: along, angle: Math.PI / 2 });
+      const side = line === 0 ? 1 : -1;
+      parkedSpawns.push({ x: streetCenterX(line) + side * (CITY.road / 2 + 7), y: along, angle: Math.PI / 2 });
     } else {
-      parkedSpawns.push({ x: along, y: streetCenterY(line) - CITY.road / 2 + 14, angle: 0 });
+      const side = line === 0 ? 1 : -1;
+      parkedSpawns.push({ x: along, y: streetCenterY(line) + side * (CITY.road / 2 + 7), angle: 0 });
     }
   }
 
@@ -167,6 +175,15 @@ export function createCity(random) {
   const coupeSpawn = {
     x: noodle.building.x + noodle.building.w / 2,
     y: noodle.building.y + noodle.building.h + CITY.pavement + CITY.road / 2 - 14,
+    angle: 0,
+  };
+
+  // The gold Vantara S — the showpiece of mission 6 — sits in the bank's front lot,
+  // on the street below the bank, pointing east like the coupe.
+  const bank = specials.bank;
+  const showpieceSpawn = {
+    x: bank.building.x + bank.building.w / 2,
+    y: bank.building.y + bank.building.h + CITY.pavement + CITY.road / 2 - 14,
     angle: 0,
   };
 
@@ -179,6 +196,7 @@ export function createCity(random) {
     specials,
     parkedSpawns,
     coupeSpawn,
+    showpieceSpawn,
     colliders: buildings,
   };
 }

@@ -3,7 +3,7 @@
 // then buildings with their shadows and lit windows, then cars, people, bullets and
 // particles; the HUD (health, money, wanted stars, objective, minimap) and the screens
 // (title, pause, busted, wasted, mission banners) are painted over the top in view space.
-import { CAR, CITY, FONT, GAME_SUBTITLE, GAME_TITLE, PALETTE, PLAYER, VIEW } from './config.js';
+import { CAR, CITY, FONT, GAME_SUBTITLE, GAME_TITLE, GARAGE, PALETTE, PLAYER, VIEW } from './config.js';
 import { clamp, hash2 } from './geom.js';
 
 export const SCREEN_TITLE = 'title';
@@ -234,13 +234,19 @@ export function createRenderer(canvas, city) {
     ctx.fillRect(CAR.length / 2 - 2, -CAR.width / 2 + 3, 3, 4);
     ctx.fillRect(CAR.length / 2 - 2, CAR.width / 2 - 7, 3, 4);
     if (isPolice) {
-      const phase = Math.floor(time * 2.4) % 2 === 0;
+      // Each car's light bar runs on its own phase, so a pack of them strobes raggedly.
+      const phase = Math.floor(time * 2.4 + (car.x + car.y) * 0.013) % 2 === 0;
       ctx.fillStyle = phase ? PALETTE.lightRed : '#5a1616';
       ctx.fillRect(-7, -CAR.width / 2 + 3, 6, 6);
       ctx.fillStyle = phase ? '#16295e' : PALETTE.lightBlue;
       ctx.fillRect(-7, CAR.width / 2 - 9, 6, 6);
       ctx.fillStyle = '#23272e';
       ctx.fillRect(-8, -3, 8, 6);
+    }
+    if (car.kind === 'showpiece') {
+      // The Vantara's racing stripe, nose to tail.
+      ctx.fillStyle = PALETTE.policeTrim;
+      ctx.fillRect(-CAR.length / 2 + 5, -3, CAR.length - 10, 6);
     }
     if (car.health < 100) {
       ctx.fillStyle = `rgba(20, 20, 20, ${(1 - car.health / 100) * 0.35})`;
@@ -277,6 +283,31 @@ export function createRenderer(canvas, city) {
     drawGround(cam);
     drawBuildings(cam);
 
+    // Skypak Garage's repair bay: a dashed painted box on the ground in front of the
+    // garage, with its little standing sign. It lights up gold while you are in it.
+    const garagePlace = city.specials.garage;
+    const bay = { x: garagePlace.x, y: garagePlace.y + GARAGE.bayOffsetY };
+    if (inView(bay.x, bay.y, 110)) {
+      ctx.strokeStyle = ui.garageActive ? PALETTE.marker : 'rgba(143, 208, 224, 0.9)';
+      ctx.lineWidth = ui.garageActive ? 3.5 : 2.5;
+      ctx.setLineDash([14, 9]);
+      roundRectPath(ctx, bay.x - 56, bay.y - 38, 112, 76, 8);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = font(13, 800);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(20, 26, 30, 0.5)';
+      ctx.fillText('REPAIR BAY', bay.x, bay.y + 54);
+      ctx.fillStyle = '#3a3f46';
+      ctx.fillRect(bay.x - 68, bay.y - 54, 4, 26);
+      ctx.fillStyle = PALETTE.garage;
+      roundRectPath(ctx, bay.x - 86, bay.y - 72, 40, 20, 4);
+      ctx.fill();
+      ctx.fillStyle = '#16303a';
+      ctx.font = font(10, 800);
+      ctx.fillText('FIX', bay.x - 66, bay.y - 58);
+    }
+
     // The mission beacon: a ring on the ground and a pillar of light.
     const marker = ui.marker;
     if (marker && ui.screen !== SCREEN_TITLE) {
@@ -300,6 +331,24 @@ export function createRenderer(canvas, city) {
     }
 
     for (const car of state.cars) if (inView(car.x, car.y, 40)) drawCar(car, state.time);
+    // The tail target wears an orange ring and a bobbing arrow: the sedan, marked.
+    for (const car of state.cars) {
+      if (car.kind !== 'target' || !inView(car.x, car.y, 40)) continue;
+      const pulse = 1 + Math.sin(state.time * 5) * 0.1;
+      ctx.strokeStyle = PALETTE.target;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(car.x, car.y, 34 * pulse, 0, Math.PI * 2);
+      ctx.stroke();
+      const bob = Math.sin(state.time * 3) * 3;
+      ctx.fillStyle = PALETTE.target;
+      ctx.beginPath();
+      ctx.moveTo(car.x, car.y - 46 + bob);
+      ctx.lineTo(car.x - 7, car.y - 58 + bob);
+      ctx.lineTo(car.x + 7, car.y - 58 + bob);
+      ctx.closePath();
+      ctx.fill();
+    }
     // Highlight the player's own car.
     if (state.player.inCar && state.player.car) {
       const car = state.player.car;
@@ -308,6 +357,16 @@ export function createRenderer(canvas, city) {
       ctx.beginPath();
       ctx.arc(car.x, car.y, 34 + Math.sin(state.time * 5) * 2, 0, Math.PI * 2);
       ctx.stroke();
+      // A passenger's head beside the driver's, when someone is riding along.
+      if (ui.passenger) {
+        const side = car.angle + Math.PI / 2;
+        const hx = car.x + Math.cos(side) * 6 - Math.cos(car.angle) * 2;
+        const hy = car.y + Math.sin(side) * 6 - Math.sin(car.angle) * 2;
+        ctx.fillStyle = '#e8b98d';
+        ctx.beginPath();
+        ctx.arc(hx, hy, 4.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     for (const ped of state.peds) {
@@ -342,6 +401,19 @@ export function createRenderer(canvas, city) {
       ctx.fill();
       ctx.fillStyle = '#ffffff';
       ctx.fillText('DEE VOSS', npc.x, npc.y - 21);
+    }
+
+    // Milo, Dee's cousin, waiting out front of Marina Stores during mission 4.
+    if (ui.cousin && inView(ui.cousin.x, ui.cousin.y)) {
+      drawPerson(ui.cousin.x, ui.cousin.y, Math.PI / 2 + Math.sin(state.time * 1.7) * 0.25, '#4fb8c9', { radius: 11 });
+      ctx.font = font(12, 700);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(18, 21, 27, 0.75)';
+      const w = ctx.measureText(ui.cousin.name).width + 12;
+      roundRectPath(ctx, ui.cousin.x - w / 2, ui.cousin.y - 34, w, 17, 4);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(ui.cousin.name, ui.cousin.x, ui.cousin.y - 21);
     }
 
     // The player, when on foot.
@@ -404,6 +476,11 @@ export function createRenderer(canvas, city) {
         ctx.fillRect(x + (col * CITY.pitch + CITY.road) * s, y + (row * CITY.pitch + CITY.road) * s, CITY.block * s, CITY.block * s);
       }
     }
+    // The buildings themselves, faint, so the blocks read as a built-up city.
+    ctx.fillStyle = 'rgba(235, 230, 205, 0.15)';
+    for (const b of city.buildings) {
+      ctx.fillRect(x + b.x * s, y + b.y * s, Math.max(1.4, b.w * s), Math.max(1.4, b.h * s));
+    }
     ctx.strokeStyle = '#9aa48f';
     ctx.lineWidth = Math.max(1, CITY.road * s * 0.5);
     ctx.beginPath();
@@ -424,7 +501,7 @@ export function createRenderer(canvas, city) {
       ctx.fillRect(-pulse / 1.4, -pulse / 1.4, pulse * 1.4, pulse * 1.4);
       ctx.restore();
     }
-    // Police blips, alternating red and blue.
+    // Police blips, alternating red and blue around a white core.
     const phase = Math.floor(state.time * 2.4) % 2 === 0;
     for (const car of state.cars) {
       if (car.kind !== 'police') continue;
@@ -432,7 +509,29 @@ export function createRenderer(canvas, city) {
       ctx.beginPath();
       ctx.arc(x + car.x * s, y + car.y * s, 3.2, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(x + car.x * s, y + car.y * s, 1.2, 0, Math.PI * 2);
+      ctx.fill();
     }
+    // The tail target, an orange diamond, while a tail is running.
+    for (const car of state.cars) {
+      if (car.kind !== 'target') continue;
+      ctx.fillStyle = PALETTE.target;
+      ctx.save();
+      ctx.translate(x + car.x * s, y + car.y * s);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillRect(-3, -3, 6, 6);
+      ctx.restore();
+    }
+    // Skypak Garage: a wrench-blue square with its G.
+    const garagePlace = city.specials.garage;
+    ctx.fillStyle = PALETTE.garage;
+    ctx.fillRect(x + garagePlace.x * s - 3.6, y + garagePlace.y * s - 3.6, 7.2, 7.2);
+    ctx.fillStyle = '#16303a';
+    ctx.font = font(7.5, 800);
+    ctx.textAlign = 'center';
+    ctx.fillText('G', x + garagePlace.x * s, y + garagePlace.y * s + 2.6);
     // Dee.
     ctx.fillStyle = PALETTE.npc;
     ctx.beginPath();
@@ -524,6 +623,11 @@ export function createRenderer(canvas, city) {
       ctx.fillStyle = PALETTE.marker;
       ctx.fillText('CARRYING: PACKAGE', VIEW.width - 22, 128);
     }
+    if (ui.passenger) {
+      ctx.font = font(14, 700);
+      ctx.fillStyle = PALETTE.marker;
+      ctx.fillText('PASSENGER: MILO', VIEW.width - 22, ui.carrying ? 152 : 128);
+    }
 
     // Objective, top centre.
     if (ui.objective) {
@@ -546,6 +650,36 @@ export function createRenderer(canvas, city) {
       ctx.font = font(19, 600);
       ctx.fillStyle = PALETTE.text;
       ctx.fillText(ui.objective.text, VIEW.width / 2, 66);
+    }
+
+    // The mission countdown, big in the centre, flashing white-red when it runs low.
+    if (ui.timer !== null && ui.timer !== undefined) {
+      const t = Math.ceil(ui.timer);
+      const urgent = t <= 10;
+      ctx.textAlign = 'center';
+      ctx.font = font(30, 800);
+      ctx.fillStyle = urgent ? (Math.floor(state.time * 4) % 2 === 0 ? '#ffffff' : PALETTE.danger) : PALETTE.text;
+      ctx.fillText(`${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`, VIEW.width / 2, 118);
+    }
+
+    // The mission meter (the tail's patience, the Vantara's hull): a labelled bar.
+    if (ui.meter) {
+      const w = 300;
+      const x = VIEW.width / 2 - w / 2;
+      const y = ui.timer !== null && ui.timer !== undefined ? 132 : 94;
+      ctx.textAlign = 'left';
+      ctx.font = font(12, 700);
+      ctx.fillStyle = PALETTE.muted;
+      ctx.fillText(ui.meter.label, x, y - 6);
+      roundRectPath(ctx, x, y, w, 11, 5);
+      ctx.fillStyle = 'rgba(14, 16, 20, 0.72)';
+      ctx.fill();
+      const frac = clamp(ui.meter.frac, 0, 1);
+      if (frac > 0) {
+        roundRectPath(ctx, x + 1.5, y + 1.5, (w - 3) * frac, 8, 4);
+        ctx.fillStyle = ui.meter.good ? PALETTE.health : PALETTE.marker;
+        ctx.fill();
+      }
     }
 
     drawMinimap(world, ui);
@@ -676,7 +810,7 @@ export function createRenderer(canvas, city) {
 
     const lines = [
       'Rook owes money all over Azura Bay. Dee Voss, fixer and noodle chef,',
-      'has work: three jobs, one dented coupe, and every cop in the city.',
+      'has work: six jobs, one dented coupe, and every cop in the city.',
       'Drive anything. Run from everyone. Try not to get busted.',
     ];
     ctx.font = font(19, 500);
@@ -695,6 +829,7 @@ export function createRenderer(canvas, city) {
     const controls = [
       'On foot: WASD / arrows move · mouse aims · click shoots · Shift sprints',
       'In a car: W/S accelerate & brake · A/D steer · E or F get in / out',
+      'Skypak Garage bay: full repair — and the law forgets a star',
       'P pause · M mute · Lose the stars to cool off',
     ];
     controls.forEach((line, i) => ctx.fillText(line, VIEW.width / 2, 540 + i * 26));
@@ -704,7 +839,8 @@ export function createRenderer(canvas, city) {
     }
   }
 
-  /** Paint one frame. ui: {screen, marker, objective, prompt, banner, carrying, muted, saveExists, saveSummary}. */
+  /** Paint one frame. ui: {screen, marker, objective, prompt, banner, carrying, passenger,
+   *  timer, meter, cousin, garageActive, muted, saveExists, saveSummary}. */
   function draw(world, ui) {
     const state = world.state;
     ctx.setTransform(1, 0, 0, 1, 0, 0);

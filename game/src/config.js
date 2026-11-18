@@ -121,6 +121,42 @@ export const WANTED = {
   decayRate: 17,
 };
 
+/**
+ * Skypak Garage's repair bay: a painted rectangle on the ground in front of the garage.
+ * Driving in and pressing the action key pays the fee, repairs the car fully and sheds
+ * one wanted star; the crew then needs a breather before the next job.
+ */
+export const GARAGE = {
+  /** The bay's centre sits this far south of the garage's front-door marker. */
+  bayOffsetY: 30,
+  bayRadius: 58,
+  /** Seconds before the crew will take another car. */
+  cooldown: 20,
+  baseFee: 15,
+  /** Dollars charged per point of damage repaired. */
+  perDamage: 1.1,
+};
+
+/**
+ * The tail job (mission 5): stay inside the distance band around the target car. The
+ * meter fills while you are in the band and drains outside it; loitering inside
+ * tooClose for spookSeconds, or touching the car at all, blows the job.
+ */
+export const TAIL = {
+  bandMin: 110,
+  bandMax: 300,
+  tooClose: 80,
+  spookSeconds: 2,
+  /** Meter gained per second in the band (a full meter takes about 13 s). */
+  fillRate: 1 / 13,
+  /** Meter lost per second outside the band. */
+  drainRate: 1 / 7,
+  /** The meter must hold at least this much when the target parks up. */
+  passMeter: 0.5,
+  /** The target sedan's cruising speed. */
+  cruise: 205,
+};
+
 /** The player's pistol: fast projectiles, short life, fired from the hip on foot. */
 export const GUN = {
   bulletSpeed: 940,
@@ -160,6 +196,8 @@ export const PALETTE = {
   lightBlue: '#4d7cff',
   marker: '#ffc93e',
   markerBeam: 'rgba(255, 201, 62, 0.20)',
+  target: '#ff9f43',
+  garage: '#8fd0e0',
   health: '#58d977',
   healthLow: '#ff5d5d',
   money: '#9fe870',

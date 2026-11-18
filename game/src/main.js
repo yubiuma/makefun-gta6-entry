@@ -12,7 +12,7 @@ import { createCity } from './city.js';
 import { createWorld, EV_BUSTED, EV_CRASH, EV_ENTER, EV_EXIT, EV_HIT, EV_PED_DOWN, EV_SHOT, EV_STEAL, EV_WASTED } from './world.js';
 import { ACTION_CONFIRM, ACTION_ENTER, ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, createInput } from './input.js';
 import { createAudio } from './audio.js';
-import { CHAIN, createMissionState, markerFor, objectiveText, objectiveTitle, restoreMissions, updateMissions, failCurrentJob } from './missions.js';
+import { CHAIN, cousinSpot, createMissionState, hudExtras, markerFor, objectiveText, objectiveTitle, restoreMissions, updateMissions, failCurrentJob } from './missions.js';
 import { createRenderer, SCREEN_BUSTED, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WASTED } from './render.js';
 import { stageShot } from './shots.js';
 
@@ -49,6 +49,10 @@ function loadSave() {
 function persist() {
   try {
     window.localStorage.setItem(SAVE_KEY, JSON.stringify({
+      // Version 2: the six-mission story. Version 1 saves (three missions) still load:
+      // they carry the same money/chainIndex/sideJobsDone fields, and restoreMissions
+      // defaults anything a save does not have.
+      version: 2,
       money: world.state.money,
       chainIndex: missions.chainIndex,
       sideJobsDone: missions.sideJobsDone,
@@ -67,6 +71,7 @@ function saveSummary(save) {
 
 function runShot(name) {
   const scene = stageShot(name, world, missions, city);
+  const extras = hudExtras(missions, world);
   const ui = {
     screen: scene.screen,
     marker: scene.screen === SCREEN_TITLE ? null : markerFor(missions, city, world),
@@ -74,6 +79,11 @@ function runShot(name) {
     prompt: null,
     banner: null,
     carrying: missions.carrying,
+    passenger: missions.passenger,
+    timer: extras.timer,
+    meter: extras.meter,
+    cousin: cousinSpot(missions, city),
+    garageActive: false,
     muted: false,
     saveExists: false,
     saveSummary: '',
@@ -130,7 +140,7 @@ function runGame() {
     fine = kind === 'busted'
       ? Math.min(world.state.money, 60 + world.state.wanted.stars * 40)
       : Math.min(world.state.money, 80);
-    failCurrentJob(missions);
+    failCurrentJob(missions, world);
     audio.fail();
     audio.sirenSet(0);
     audio.engineSet(null);
@@ -159,13 +169,19 @@ function runGame() {
     else if (events & EV_WASTED) endRun('wasted');
   }
 
-  function handleMissions() {
-    updateMissions(missions, world, city);
+  function handleMissions(simDt) {
+    updateMissions(missions, world, city, simDt);
     if (missions.justStarted) {
       const mission = missions.justStarted;
       showBanner(`MISSION ${missions.chainIndex + 1} — ${mission.title.toUpperCase()}`, mission.intro);
       audio.click();
       announce(`Mission: ${mission.title}. ${mission.intro}`);
+    }
+    if (missions.justFailed) {
+      const failed = missions.justFailed;
+      showBanner('JOB BLOWN', failed.reason, 3.8);
+      audio.fail();
+      announce(`Job blown: ${failed.reason}`);
     }
     if (missions.justPickedUp) {
       audio.pickup();
@@ -183,13 +199,29 @@ function runGame() {
 
   function currentPrompt() {
     const player = world.state.player;
-    if (screen !== SCREEN_PLAY || player.inCar) return null;
+    if (screen !== SCREEN_PLAY) return null;
+    const bay = world.garageBay();
+    const inBay = Math.hypot(player.x - bay.x, player.y - bay.y) < bay.r;
+    if (player.inCar) {
+      // In the Skypak bay the action key is the crew's, not the door's.
+      if (!inBay) return null;
+      const quote = world.garageQuote();
+      if (!quote || quote.clean) return quote ? 'Skypak Garage — she runs clean, nothing to fix' : null;
+      if (quote.cooldown > 0) return `Skypak crew is busy — back in ${Math.ceil(quote.cooldown)}s`;
+      return quote.shedStar
+        ? `E — Skypak: full repair + shed a star ($${quote.fee})`
+        : `E — Skypak: full repair ($${quote.fee})`;
+    }
+    if (inBay) return 'Skypak Garage — drive a car into the bay for repairs';
     const car = world.nearestEnterableCar();
     if (!car) return null;
     return car === world.state.coupe ? "E — Get into Dee's coupe" : 'E — Steal this car';
   }
 
   function buildUi() {
+    const extras = hudExtras(missions, world);
+    const player = world.state.player;
+    const bay = world.garageBay();
     return {
       screen,
       marker: screen === SCREEN_TITLE ? null : markerFor(missions, city, world),
@@ -197,6 +229,11 @@ function runGame() {
       prompt: currentPrompt(),
       banner,
       carrying: missions.carrying,
+      passenger: missions.passenger,
+      timer: extras.timer,
+      meter: extras.meter,
+      cousin: cousinSpot(missions, city),
+      garageActive: Math.hypot(player.x - bay.x, player.y - bay.y) < bay.r,
       muted: audio.muted,
       saveExists: save !== null,
       saveSummary: save ? saveSummary(save) : '',
@@ -235,7 +272,30 @@ function runGame() {
       const player = world.state.player;
       const logical = renderer.toLogical(input.mouse.clientX, input.mouse.clientY);
       const hasMouse = input.mouse.clientX !== 0 || input.mouse.clientY !== 0;
+
+      // In the Skypak bay, the action key talks to the crew instead of the door:
+      // a successful service swallows the press, anything else lets it through.
+      let enterPressed = (actions & ACTION_ENTER) !== 0;
+      if (enterPressed && screen === SCREEN_PLAY && player.inCar) {
+        const res = world.tryGarageService();
+        if (res.ok) {
+          enterPressed = false;
+          showBanner('SKYPARK GARAGE', res.shedStar
+            ? `Repaired, resprayed, one star forgotten — -$${res.fee}`
+            : `Repaired and resprayed — -$${res.fee}`);
+          audio.success();
+          persist();
+          save = loadSave();
+          announce(`Garage service: repaired for $${res.fee}.`);
+        } else if (res.reason === 'cash') {
+          announce(`Skypak needs $${res.fee} for that — you are short.`);
+        } else if (res.reason === 'busy') {
+          announce('The Skypak crew is still busy with the last car.');
+        }
+      }
+
       let firstStep = true;
+      let simDt = 0;
       while (accumulator >= STEP && playing) {
         const ctrl = {
           moveX: screen === SCREEN_PLAY ? input.moveX() : 0,
@@ -244,15 +304,16 @@ function runGame() {
           aimY: hasMouse ? logical.y + world.state.camera.y - VIEW.height / 2 : null,
           firing: screen === SCREEN_PLAY && input.firing() && !player.inCar,
           sprint: input.sprint(),
-          enter: firstStep && (actions & ACTION_ENTER) !== 0,
+          enter: firstStep && enterPressed,
         };
         const events = world.step(STEP, ctrl);
+        simDt += STEP;
         if (screen === SCREEN_PLAY) handleEvents(events);
         firstStep = false;
         accumulator -= STEP;
         if (world.state.over && screen === SCREEN_PLAY) break;
       }
-      if (screen === SCREEN_PLAY) handleMissions();
+      if (screen === SCREEN_PLAY) handleMissions(simDt);
     } else {
       accumulator = 0;
     }

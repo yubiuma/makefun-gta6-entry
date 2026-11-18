@@ -21,13 +21,20 @@ crime the law sees pushes your wanted level up another star, bringing more
 patrol cars down on you until you break their line of sight and let things
 cool off.
 
-A three-mission story chain for Dee carries you from a first nervous pickup
-to a cash duffel that every cop in the city wants a piece of. Finish it and
-the work never really ends: courier jobs keep generating for as long as you
-care to run them. A live minimap keeps the city, the law and your next
-drop-off in view, the soundtrack and effects are synthesised in code rather
-than sampled, and your money and progress persist between visits in
-localStorage.
+A six-mission story chain for Dee carries you from a first nervous pickup
+through a package run that draws every cop in the city, a timed dash to get
+Dee's stranded cousin to his shift at the Hotel Lumiere, a quiet tail across
+town — close enough to watch, never close enough to be made — and one last
+score: a gold Vantara S lifted from the bank lot and delivered whole, with
+the whole force on your tail. Finish the story and the work never really
+ends: courier jobs keep generating for as long as you care to run them.
+
+When the driving gets expensive, Skypak Garage earns its keep: roll into the
+painted bay out front and the crew will repair your car to showroom shape and
+see to it that the law forgets one of your stars, for a fee that scales with
+the damage. A live minimap keeps the city, the law and your next drop-off in
+view, the soundtrack and effects are synthesised in code rather than sampled,
+and your money and progress persist between visits in localStorage.
 
 ## Run it
 
@@ -46,6 +53,8 @@ Controls:
   shoot, Shift to sprint.
 - **Driving** — W and S to accelerate and brake, A and D to steer, E or F to
   get into or out of a car.
+- **At Skypak Garage** — park in the repair bay and press E for a full
+  repair that also sheds a wanted star.
 - **Anywhere** — P pauses, M mutes the synth sound.
 
 Handing the entry in is `node main.ts`, which copies `game/` and

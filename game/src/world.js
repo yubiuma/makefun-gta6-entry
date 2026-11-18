@@ -4,11 +4,11 @@
 // flags, so the caller can make noise and change screens without the world knowing about
 // either. Crimes are reported to the wanted system only when a pedestrian or an officer
 // is close enough to witness them.
-import { CAR, CITY, GUN, PARTICLE_POOL, PED, PLAYER, POLICE, TRAFFIC, VIEW, WANTED } from './config.js';
+import { CAR, CITY, GARAGE, GUN, PARTICLE_POOL, PED, PLAYER, POLICE, TAIL, TRAFFIC, VIEW, WANTED } from './config.js';
 import { pick, range, rangeInt } from './random.js';
 import { angleDiff, angleTurn, circleRectResolve, clamp, dist, dist2 } from './geom.js';
 import { isOnStreet, randomStreetPoint, streetCenterX, streetCenterY } from './city.js';
-import { clearWanted, createWanted, policeQuota, reportCrime, setHeat as setWantedHeat, updateWanted } from './wanted.js';
+import { clearWanted, createWanted, heatForStars, policeQuota, reportCrime, setHeat as setWantedHeat, updateWanted } from './wanted.js';
 
 export const EV_SHOT = 1;
 export const EV_HIT = 2;
@@ -43,6 +43,11 @@ function makeCar(random, x, y, angle, kind, color) {
     recovering: false,
     stolen: false,
     smokeTimer: 0,
+    /** Routed cars (the tail target) drive to this point and park up for good. */
+    routeDest: null,
+    arrived: false,
+    /** World time of the last collision the player was part of, against this car. */
+    lastPlayerHitTime: -99,
   };
 }
 
@@ -66,6 +71,9 @@ export function createWorld(random, city) {
     cameraLock: null,
     attract: false,
     coupe: null,
+    showpiece: null,
+    /** Skypak Garage's crew: seconds until they will take another car. */
+    garage: { cooldown: 0 },
     npc: { x: city.specials.noodle.x, y: city.specials.noodle.y - 16, angle: Math.PI / 2 },
     over: null,
     policeTimer: 0,
@@ -160,6 +168,18 @@ export function createWorld(random, city) {
     if (car.roadDir.y !== 0) car.streetI = clamp(Math.round((car.x - CITY.road / 2) / CITY.pitch), 0, CITY.cols);
   }
 
+  /** Quietly re-enter a car on a far street, rolling again — the jam breaker. */
+  function recycleCar(car) {
+    const { point, vertical } = laneSpawn(700);
+    car.x = point.x;
+    car.y = point.y;
+    car.speed = 0;
+    const dir = random() < 0.5 ? 1 : -1;
+    if (vertical) { car.roadDir = { x: 0, y: dir }; car.angle = dir > 0 ? Math.PI / 2 : -Math.PI / 2; }
+    else { car.roadDir = { x: dir, y: 0 }; car.angle = dir > 0 ? 0 : Math.PI; }
+    aimAtIntersection(car);
+  }
+
   function spawnTrafficCar() {
     const { point, vertical } = laneSpawn(320);
     const dir = random() < 0.5 ? 1 : -1;
@@ -244,6 +264,10 @@ export function createWorld(random, city) {
     const coupe = makeCar(random, city.coupeSpawn.x, city.coupeSpawn.y, city.coupeSpawn.angle, 'parked', '#d23b2e');
     state.cars.push(coupe);
     state.coupe = coupe;
+    const showpiece = makeCar(random, city.showpieceSpawn.x, city.showpieceSpawn.y, city.showpieceSpawn.angle, 'showpiece', '#e6b93d');
+    state.cars.push(showpiece);
+    state.showpiece = showpiece;
+    state.garage.cooldown = 0;
     for (let i = 0; i < TRAFFIC.count; i += 1) spawnTrafficCar();
 
     for (let i = 0; i < PED.count; i += 1) {
@@ -349,14 +373,26 @@ export function createWorld(random, city) {
 
   /** The traffic brain: follow the lane to the next intersection, then choose a way on. */
   function trafficControl(car, dt) {
+    // A routed car (the tail target) pulls over and parks up for good at its destination.
+    if (car.routeDest && dist2(car.x, car.y, car.routeDest.x, car.routeDest.y) < 110 * 110) {
+      if (Math.abs(car.speed) > 6) driveInputs(car, dt, -0.7, 0, CAR.maxSpeed, CAR.acceleration);
+      else {
+        car.speed = 0;
+        car.arrived = true;
+      }
+      return;
+    }
     let targetSpeed = car.health <= 0 ? 0 : car.cruise;
     // Obstacles ahead in this lane: other cars (the player's included), then people.
+    let blockerCar = null;
+    let blockerAhead = Infinity;
     for (const other of state.cars) {
       if (other === car) continue;
       const ahead = (other.x - car.x) * Math.cos(car.angle) + (other.y - car.y) * Math.sin(car.angle);
       const lateral = Math.abs(-(other.x - car.x) * Math.sin(car.angle) + (other.y - car.y) * Math.cos(car.angle));
       if (ahead > 0 && ahead < TRAFFIC.lookAhead && lateral < 17) {
         targetSpeed = ahead < TRAFFIC.lookAhead * 0.5 ? 0 : Math.min(targetSpeed, car.cruise * 0.4);
+        if (ahead < blockerAhead) { blockerAhead = ahead; blockerCar = other; }
       }
     }
     for (const ped of state.peds) {
@@ -388,6 +424,35 @@ export function createWorld(random, city) {
     const throttle = car.speed < targetSpeed ? 0.85 : -0.7;
     driveInputs(car, dt, targetSpeed === 0 && car.speed < 4 ? -0.4 : throttle, steer, CAR.maxSpeed, CAR.acceleration);
 
+    // Jam breaking: a car held up by another car — queued behind a wreck or locked
+    // in a nose-to-nose knot — eventually clears. (Being held up by the player or
+    // an officer does not count: that queue is honest.) Ordinary traffic is
+    // recycled to a far street, the far-traffic cleanup's trick; a routed car
+    // instead has the traffic blocking it recycled, so a tail can never deadlock.
+    const heldByCar = blockerCar !== null && blockerCar.kind !== 'police' && blockerCar.driver !== 'player';
+    if (heldByCar && car.health > 0 && Math.abs(car.speed) < 20) {
+      car.jamTime = (car.jamTime ?? 0) + dt;
+      const limit = car.kind === 'target' ? 5 : 8;
+      if (car.jamTime > limit) {
+        car.jamTime = 0;
+        if (car.kind === 'target') {
+          if (blockerCar.kind === 'traffic') recycleCar(blockerCar);
+          else if (blockerCar.kind === 'parked' && blockerCar !== state.coupe && blockerCar !== state.showpiece) {
+            // A kerbside car can simply be parked somewhere else instead.
+            const spawn = pick(random, city.parkedSpawns);
+            blockerCar.x = spawn.x;
+            blockerCar.y = spawn.y;
+            blockerCar.angle = spawn.angle;
+            blockerCar.speed = 0;
+          } else recycleCar(car);
+        } else {
+          recycleCar(car);
+        }
+      }
+    } else {
+      car.jamTime = Math.max(0, (car.jamTime ?? 0) - dt * 3);
+    }
+
     // Arriving at the target intersection: pick the way on.
     car.turnCooldown -= dt;
     const cx = streetCenterX(car.nextI);
@@ -409,6 +474,15 @@ export function createWorld(random, city) {
       addIfLegal(right, 0.23);
       if (options.length === 0) {
         car.roadDir = { x: -straight.x, y: -straight.y };
+      } else if (car.routeDest) {
+        // Routed cars take whichever legal way on leaves them closest to the destination.
+        let chosen = options[0].dir;
+        let bestD = Infinity;
+        for (const option of options) {
+          const d = dist2(streetCenterX(atI + option.dir.x), streetCenterY(atJ + option.dir.y), car.routeDest.x, car.routeDest.y);
+          if (d < bestD) { bestD = d; chosen = option.dir; }
+        }
+        car.roadDir = chosen;
       } else {
         let roll = random();
         let chosen = options[options.length - 1].dir;
@@ -485,6 +559,12 @@ export function createWorld(random, city) {
         const bvx = Math.cos(b.angle) * b.speed;
         const bvy = Math.sin(b.angle) * b.speed;
         const closing = (avx - bvx) * nx + (avy - bvy) * ny;
+        // Any touch involving the player's car is stamped on the other car, hard or
+        // gentle: the tail job reads it to know the sedan has been hit.
+        if (player.inCar && (player.car === a || player.car === b)) {
+          const other = player.car === a ? b : a;
+          other.lastPlayerHitTime = state.time;
+        }
         if (closing <= CAR.softHit) continue;
         const damage = Math.min(20, (closing - CAR.softHit) / 12);
         damageCar(a, damage);
@@ -496,7 +576,19 @@ export function createWorld(random, city) {
         if (playerInvolved) {
           events |= closing > 250 ? EV_CRASH : EV_HIT;
           const other = player.car === a ? b : a;
-          reportIfWitnessed(other.kind === 'police' ? 'hitPoliceCar' : 'hitCar', other.x, other.y);
+          other.lastPlayerHitTime = state.time;
+          // Blame follows the approach: the crime counts only when the player's car
+          // was driving into the other one harder than it was driving into them.
+          // Getting rammed by a pursuer, or rear-ended at a light, is not your crime.
+          const dirx = player.car === a ? nx : -nx;
+          const diry = player.car === a ? ny : -ny;
+          const playerApproach = (Math.cos(player.car.angle) * player.car.speed) * dirx
+            + (Math.sin(player.car.angle) * player.car.speed) * diry;
+          const otherApproach = -((Math.cos(other.angle) * other.speed) * dirx
+            + (Math.sin(other.angle) * other.speed) * diry);
+          if (playerApproach > otherApproach) {
+            reportIfWitnessed(other.kind === 'police' ? 'hitPoliceCar' : 'hitCar', other.x, other.y);
+          }
         }
       }
     }
@@ -671,7 +763,7 @@ export function createWorld(random, city) {
     let best = null;
     let bestD = PLAYER.enterRange * PLAYER.enterRange;
     for (const car of state.cars) {
-      if (car.kind === 'police') continue;
+      if (car.kind === 'police' || car.kind === 'target') continue;
       if (Math.abs(car.speed) > 70) continue;
       const d = dist2(player.x, player.y, car.x, car.y);
       if (d < bestD) { bestD = d; best = car; }
@@ -822,6 +914,51 @@ export function createWorld(random, city) {
     else wanted.bust = Math.max(0, wanted.bust - POLICE.bustDrain * dt);
   }
 
+  // ------------------------------------------------------------ Skypak Garage
+
+  /** The repair bay's centre and radius, on the ground in front of the garage. */
+  function garageBayPoint() {
+    const g = city.specials.garage;
+    return { x: g.x, y: g.y + GARAGE.bayOffsetY, r: GARAGE.bayRadius };
+  }
+
+  function removeCar(car) {
+    const index = state.cars.indexOf(car);
+    if (index >= 0) state.cars.splice(index, 1);
+  }
+
+  /**
+   * What the Skypak crew would do for the car the player is sitting in, or null when
+   * the player is not in a car in the bay. A quote with clean=true means there is
+   * nothing to fix and no heat to shed.
+   */
+  function garageQuote() {
+    if (!player.inCar || !player.car) return null;
+    const bay = garageBayPoint();
+    if (dist(player.x, player.y, bay.x, bay.y) > bay.r) return null;
+    const shedStar = wanted.stars > 0;
+    const clean = player.car.health >= CAR.maxHealth && !shedStar;
+    const fee = Math.round(GARAGE.baseFee + (CAR.maxHealth - player.car.health) * GARAGE.perDamage);
+    return { fee, shedStar, clean, cooldown: state.garage.cooldown };
+  }
+
+  /**
+   * Pay the crew: full repair and one wanted star forgotten, then a cooldown.
+   * Returns {ok:true, fee, shedStar} or {ok:false, reason: 'away'|'clean'|'busy'|'cash'}.
+   */
+  function tryGarageService() {
+    const quote = garageQuote();
+    if (!quote) return { ok: false, reason: 'away' };
+    if (quote.clean) return { ok: false, reason: 'clean' };
+    if (state.garage.cooldown > 0) return { ok: false, reason: 'busy', cooldown: state.garage.cooldown };
+    if (state.money < quote.fee) return { ok: false, reason: 'cash', fee: quote.fee };
+    state.money -= quote.fee;
+    player.car.health = CAR.maxHealth;
+    if (quote.shedStar) setWantedHeat(wanted, heatForStars(wanted.stars - 1));
+    state.garage.cooldown = GARAGE.cooldown;
+    return { ok: true, fee: quote.fee, shedStar: quote.shedStar };
+  }
+
   // ------------------------------------------------------------ camera
 
   function stepCamera(dt) {
@@ -856,13 +993,14 @@ export function createWorld(random, city) {
     let events = 0;
     if (state.over) return events;
     state.time += dt;
+    if (state.garage.cooldown > 0) state.garage.cooldown = Math.max(0, state.garage.cooldown - dt);
 
     events = stepPlayer(dt, ctrl, events);
 
     for (const car of state.cars) {
       if (car.driver !== 'player') {
         if (car.kind === 'police' && car.driver === 'ai' && wanted.stars > 0) policeControl(car, dt);
-        else if (car.kind === 'traffic' && car.driver === 'ai') trafficControl(car, dt);
+        else if ((car.kind === 'traffic' || car.kind === 'target') && car.driver === 'ai') trafficControl(car, dt);
         else {
           // Parked or abandoned: roll to a stop.
           car.speed -= car.speed * 2.4 * dt;
@@ -960,5 +1098,39 @@ export function createWorld(random, city) {
       state.cars.push(car);
       return car;
     },
+    /**
+     * Send out a routed car: it drives the streets like traffic but chooses its way at
+     * every intersection toward (destX, destY), then pulls over and parks for good.
+     * Used for the tail job's sedan. Heading east along a street, like a traffic spawn.
+     */
+    spawnRouteCar(x, y, angle, destX, destY, color) {
+      const car = makeCar(random, x, y, angle, 'target', color);
+      car.driver = 'ai';
+      car.cruise = TAIL.cruise;
+      car.routeDest = { x: destX, y: destY };
+      car.roadDir = { x: 1, y: 0 };
+      aimAtIntersection(car);
+      state.cars.push(car);
+      return car;
+    },
+    removeCar,
+    /**
+     * Make sure the gold Vantara S is sitting in the bank lot, whole: if it was wrecked
+     * (and the player is not sitting in the wreck), a fresh one takes its place.
+     */
+    stageShowpiece() {
+      const current = state.showpiece;
+      if (current && (current.health > 0 || player.car === current)) return current;
+      if (current) removeCar(current);
+      const car = makeCar(random, city.showpieceSpawn.x, city.showpieceSpawn.y, city.showpieceSpawn.angle, 'showpiece', '#e6b93d');
+      state.cars.push(car);
+      state.showpiece = car;
+      return car;
+    },
+    garageBay() {
+      return garageBayPoint();
+    },
+    garageQuote,
+    tryGarageService,
   };
 }

@@ -1,10 +1,13 @@
-// The story: three jobs for fixer Dee Voss, then open-ended courier work. A mission is a
-// list of steps; each step has a kind (talk, enterCoupe, goto, pickup, deliver, escape), a
-// place in the city, and the objective line the HUD shows. The state machine here watches
-// the world, advances steps, pays rewards into the world's money, and reports completions
+// The story: six jobs for fixer Dee Voss, then open-ended courier work. A mission is a
+// list of steps; each step has a kind (talk, enterCoupe, goto, pickup, deliver, escape,
+// pickupCousin, timedGoto, tailStart, tail, stealShowpiece, deliverShowpiece), a place in
+// the city, and the objective line the HUD shows. The state machine here watches the
+// world, advances steps, pays rewards into the world's money, and reports completions
 // so the caller can banner, save and make noise. Places are keys into city.specials.
+import { CAR, TAIL, TRAFFIC } from './config.js';
 import { heatForStars } from './wanted.js';
 import { dist } from './geom.js';
+import { streetCenterX, streetCenterY } from './city.js';
 
 export const CHAIN = [
   {
@@ -39,6 +42,36 @@ export const CHAIN = [
       { kind: 'deliver', loc: 'noodle', text: 'Bring the duffel back to Dee' },
     ],
   },
+  {
+    id: 'cousin-trouble',
+    title: 'Cousin Trouble',
+    reward: 400,
+    intro: "Dee's cousin Milo is stranded at Marina Stores and late for his shift at the Lumiere. Fetch him. Quickly.",
+    steps: [
+      { kind: 'pickupCousin', loc: 'marina', text: "Pick up Dee's cousin Milo at Marina Stores — bring a car" },
+      { kind: 'timedGoto', loc: 'hotel', text: 'Get Milo to Hotel Lumiere before his shift starts', timeLimit: 75 },
+    ],
+  },
+  {
+    id: 'quiet-tail',
+    title: 'Quiet Tail',
+    reward: 500,
+    intro: 'A grey sedan is moving something for the Port Market crew. Follow it home, and do not be made.',
+    steps: [
+      { kind: 'tailStart', loc: 'market', text: 'Get to Port Market — a grey sedan is about to roll out' },
+      { kind: 'tail', destLoc: 'station', text: 'Tail the grey sedan — stay close, never closer' },
+    ],
+  },
+  {
+    id: 'the-showpiece',
+    title: 'The Showpiece',
+    reward: 1200,
+    intro: 'A gold Vantara S is sitting in the bank lot and Dee has a buyer with cash. Bring it home whole.',
+    steps: [
+      { kind: 'stealShowpiece', text: 'Steal the gold Vantara S from the bank lot' },
+      { kind: 'deliverShowpiece', loc: 'garage', text: 'Deliver the Vantara to Skypak Garage — keep her above 40% health', minHealth: 40 },
+    ],
+  },
 ];
 
 /** Places a courier job can start or end at: everywhere with a name except Dee's door. */
@@ -52,6 +85,15 @@ export function createMissionState(random) {
     stepIndex: 0,
     active: false,
     carrying: false,
+    /** Milo is in the passenger seat (mission 4, between pickup and drop-off). */
+    passenger: false,
+    /** Seconds left on a timedGoto step; null when no clock is running. */
+    timer: null,
+    /** The tail job's sedan, a world car, while the tail step runs. */
+    tailCar: null,
+    /** Tail bookkeeping: the meter, how long the player has loitered too close, and
+     *  the last player-on-sedan contact the state machine has already accounted for. */
+    tail: { meter: 0, closeTime: 0, hitSeen: -99, stuck: 0, lx: 0, ly: 0 },
     /** The open courier job once the story is done: {phase, pickup, drop, reward}. */
     sideJob: null,
     sideJobsDone: 0,
@@ -61,16 +103,23 @@ export function createMissionState(random) {
     justStarted: null,
     /** Set for one update when a package changes hands. */
     justPickedUp: false,
+    /** Set for one update when a step blows it and resets: {title, reason}. */
+    justFailed: null,
   };
 }
 
-/** Restore progress from a save: story position and courier tally. */
+/** Restore progress from a save: story position and courier tally. Fields a save does
+ *  not carry (older saves predate them) fall back to a fresh run's values. */
 export function restoreMissions(ms, saved) {
   ms.chainIndex = Math.min(CHAIN.length, Math.max(0, saved.chainIndex | 0));
   ms.sideJobsDone = Math.max(0, saved.sideJobsDone | 0);
   ms.stepIndex = 0;
   ms.active = false;
   ms.carrying = false;
+  ms.passenger = false;
+  ms.timer = null;
+  ms.tailCar = null;
+  ms.tail = { meter: 0, closeTime: 0, hitSeen: -99, stuck: 0, lx: 0, ly: 0 };
   ms.sideJob = null;
 }
 
@@ -101,7 +150,8 @@ export function objectiveText(ms) {
 
 /**
  * Where the map marker stands, as {x, y, kind}, or null when there is nowhere to go
- * (the escape step: the marker is the police themselves). The coupe's marker moves with it.
+ * (the escape step: the marker is the police themselves). The coupe's, the sedan's and
+ * the showpiece's markers move with the cars.
  */
 export function markerFor(ms, city, world) {
   const step = currentStep(ms);
@@ -115,14 +165,57 @@ export function markerFor(ms, city, world) {
     const coupe = world.state.coupe;
     return { x: coupe.x, y: coupe.y, kind: 'car' };
   }
+  if (step.kind === 'stealShowpiece') {
+    const showpiece = world.state.showpiece;
+    return showpiece ? { x: showpiece.x, y: showpiece.y, kind: 'car' } : null;
+  }
+  if (step.kind === 'tail') {
+    if (ms.tailCar) return { x: ms.tailCar.x, y: ms.tailCar.y, kind: 'tail' };
+    const market = city.specials.market;
+    return { x: market.x, y: market.y, kind: 'goto' };
+  }
   const place = city.specials[step.loc];
   return place ? { x: place.x, y: place.y, kind: step.kind } : null;
+}
+
+/** Where Milo waits, while the pickup step of mission 4 is live: {x, y, name} or null. */
+export function cousinSpot(ms, city) {
+  if (!ms.active || ms.passenger) return null;
+  const step = currentStep(ms);
+  if (!step || step.kind !== 'pickupCousin') return null;
+  const marina = city.specials.marina;
+  return { x: marina.x - 16, y: marina.y + 4, name: 'MILO' };
+}
+
+/**
+ * The extra instruments the HUD paints under the objective: a countdown for the timed
+ * step, and a labelled meter for the tail and for the showpiece's hull.
+ */
+export function hudExtras(ms, world) {
+  const step = currentStep(ms);
+  let timer = null;
+  let meter = null;
+  if (ms.active && step) {
+    if (step.kind === 'timedGoto' && ms.timer !== null) timer = Math.max(0, ms.timer);
+    if (step.kind === 'tail') {
+      meter = { label: 'TAIL', frac: ms.tail.meter, good: ms.tail.meter >= TAIL.passMeter };
+    }
+    if (step.kind === 'stealShowpiece' || step.kind === 'deliverShowpiece') {
+      const car = world.state.showpiece;
+      if (car && world.state.player.car === car) {
+        meter = { label: 'VANTARA HULL', frac: car.health / CAR.maxHealth, good: car.health >= (step.minHealth ?? 40) };
+      }
+    }
+  }
+  return { timer, meter };
 }
 
 function startChainMission(ms) {
   ms.active = true;
   ms.stepIndex = 0;
   ms.carrying = false;
+  ms.passenger = false;
+  ms.timer = null;
   ms.justStarted = CHAIN[ms.chainIndex];
 }
 
@@ -134,6 +227,15 @@ function startSideJob(ms, city) {
   const b = city.specials[dropKey];
   const reward = Math.round((110 + dist(a.x, a.y, b.x, b.y) * 0.055) / 5) * 5;
   ms.sideJob = { phase: 'pickup', pickupKey, dropKey, pickupName: a.name, dropName: b.name, reward };
+}
+
+/** Take the tail sedan out of the world and forget the run at it. */
+function clearTail(ms, world) {
+  if (ms.tailCar) {
+    world.removeCar(ms.tailCar);
+    ms.tailCar = null;
+  }
+  ms.tail = { meter: 0, closeTime: 0, hitSeen: -99, stuck: 0, lx: 0, ly: 0 };
 }
 
 function completeStep(ms, world, city) {
@@ -148,6 +250,19 @@ function completeStep(ms, world, city) {
     }
   }
   if (step && step.kind === 'deliver') ms.carrying = false;
+  if (step && step.kind === 'pickupCousin') {
+    ms.passenger = true;
+    ms.justPickedUp = true;
+  }
+  if (step && step.kind === 'timedGoto') {
+    ms.passenger = false;
+    ms.timer = null;
+  }
+  if (step && step.kind === 'stealShowpiece') {
+    // The lot has cameras and the Vantara has a tracker: three stars, instantly.
+    world.setHeat(heatForStars(3));
+  }
+  if (step && step.kind === 'tail') clearTail(ms, world);
 
   if (ms.sideJob) {
     if (ms.sideJob.phase === 'pickup') {
@@ -170,26 +285,121 @@ function completeStep(ms, world, city) {
     ms.active = false;
     ms.stepIndex = 0;
     ms.carrying = false;
+    ms.passenger = false;
+    ms.timer = null;
+  }
+}
+
+/** Blow the tail step back to its start: the sedan vanishes, the market try again. */
+function failTailStep(ms, world, reason) {
+  clearTail(ms, world);
+  ms.stepIndex = Math.max(0, ms.stepIndex - 1);
+  ms.justFailed = { title: CHAIN[ms.chainIndex].title, reason };
+}
+
+/**
+ * The tail step, one update: keep the sedan rolling, watch the distance band, the
+ * spook rules and the meter, and settle the step when the sedan parks up.
+ */
+function updateTail(ms, world, city, step, dt) {
+  const player = world.state.player;
+  if (!ms.tailCar) {
+    const market = city.specials.market;
+    const dest = city.specials[step.destLoc];
+    // The sedan rolls out of the market's street, already moving, a little east of the door.
+    ms.tailCar = world.spawnRouteCar(
+      market.x + 150, streetCenterY(market.row + 1) + TRAFFIC.laneOffset, 0,
+      streetCenterX(dest.col), streetCenterY(dest.row + 1),
+      '#8a8f96',
+    );
+    ms.tailCar.speed = 160;
+    ms.tail = { meter: 0, closeTime: 0, hitSeen: ms.tailCar.lastPlayerHitTime, stuck: 0, lx: ms.tailCar.x, ly: ms.tailCar.y };
+  }
+  const target = ms.tailCar;
+
+  // A sedan wedged on a corner or boxed in by an odd pile-up would deadlock the
+  // job: if it has barely moved for a good while, its driver backs out and
+  // re-enters the route from the nearest street centre, health and all.
+  if (!target.arrived && dist(target.x, target.y, ms.tail.lx, ms.tail.ly) < 10) {
+    ms.tail.stuck += dt;
+    if (ms.tail.stuck > 7) {
+      const dest = city.specials[step.destLoc];
+      const nx = streetCenterX(Math.max(0, Math.min(8, Math.round((target.x - 36) / 280))));
+      const ny = streetCenterY(Math.max(0, Math.min(8, Math.round((target.y - 36) / 280))));
+      const health = target.health;
+      world.removeCar(target);
+      ms.tailCar = world.spawnRouteCar(
+        nx, ny, target.angle,
+        streetCenterX(dest.col), streetCenterY(dest.row + 1),
+        '#8a8f96',
+      );
+      ms.tailCar.health = health;
+      ms.tail.stuck = 0;
+      ms.tail.lx = nx;
+      ms.tail.ly = ny;
+      ms.tail.hitSeen = ms.tailCar.lastPlayerHitTime;
+      return;
+    }
+  } else {
+    ms.tail.stuck = 0;
+    ms.tail.lx = target.x;
+    ms.tail.ly = target.y;
+  }
+
+  if (target.lastPlayerHitTime > ms.tail.hitSeen) {
+    failTailStep(ms, world, 'You clipped the sedan and it bolted. Dee will have it roll out again.');
+    return;
+  }
+  if (target.health <= 25) {
+    failTailStep(ms, world, 'The sedan is a wreck — whatever it carried is lost with it. Start the tail again.');
+    return;
+  }
+
+  const d = dist(player.x, player.y, target.x, target.y);
+  if (d < TAIL.tooClose) {
+    ms.tail.closeTime += dt;
+    if (ms.tail.closeTime > TAIL.spookSeconds) {
+      failTailStep(ms, world, 'Too close, too long — the driver made you. Back off and start the tail again.');
+      return;
+    }
+  } else {
+    ms.tail.closeTime = Math.max(0, ms.tail.closeTime - dt * 1.5);
+  }
+  if (d >= TAIL.bandMin && d <= TAIL.bandMax) {
+    ms.tail.meter = Math.min(1, ms.tail.meter + TAIL.fillRate * dt);
+  } else {
+    ms.tail.meter = Math.max(0, ms.tail.meter - TAIL.drainRate * dt);
+  }
+
+  if (target.arrived) {
+    if (ms.tail.meter >= TAIL.passMeter) completeStep(ms, world, city);
+    else failTailStep(ms, world, 'The sedan parked up and you were nowhere near it. Stay on it next time.');
   }
 }
 
 /**
- * Advance the story by one step of game time. Reads the player out of the world, writes
- * rewards and scripted heat back into it, and leaves one-shot reports (justStarted,
- * justCompleted, justPickedUp) for the caller to consume.
+ * Advance the story by one frame of game time (dt is the simulated seconds the frame
+ * covered; the timers and the tail meter run on it). Reads the player out of the world,
+ * writes rewards and scripted heat back into it, and leaves one-shot reports
+ * (justStarted, justCompleted, justPickedUp, justFailed) for the caller to consume.
  */
-export function updateMissions(ms, world, city) {
+export function updateMissions(ms, world, city, dt = 0) {
   ms.justCompleted = null;
   ms.justStarted = null;
   ms.justPickedUp = false;
+  ms.justFailed = null;
   const player = world.state.player;
   const noodle = city.specials.noodle;
 
   if (!ms.active && !ms.sideJob) {
     // Standing work: walk up to Dee, on foot, and the next job begins.
     if (!player.inCar && dist(player.x, player.y, noodle.x, noodle.y) < 48) {
-      if (ms.chainIndex < CHAIN.length) startChainMission(ms);
-      else startSideJob(ms, city);
+      if (ms.chainIndex < CHAIN.length) {
+        startChainMission(ms);
+        if (CHAIN[ms.chainIndex].id === 'the-showpiece') world.stageShowpiece();
+      } else {
+        startSideJob(ms, city);
+      }
     }
     return;
   }
@@ -204,6 +414,44 @@ export function updateMissions(ms, world, city) {
     case 'escape':
       if (world.state.wanted.stars === 0) completeStep(ms, world, city);
       break;
+    case 'pickupCousin':
+      // Milo only gets into a car: roll up to the Marina doors with wheels under you.
+      if (player.inCar && marker && dist(player.x, player.y, marker.x, marker.y) < 50) completeStep(ms, world, city);
+      break;
+    case 'timedGoto': {
+      if (ms.timer === null) ms.timer = step.timeLimit;
+      ms.timer -= dt;
+      if (ms.timer <= 0) {
+        // The clock restarts on the same leg: Milo stays put, the shift does not wait.
+        ms.timer = step.timeLimit;
+        ms.justFailed = { title: CHAIN[ms.chainIndex].title, reason: "Out of time — Milo's shift started without him. The clock is running again." };
+        break;
+      }
+      if (marker && dist(player.x, player.y, marker.x, marker.y) < 46) completeStep(ms, world, city);
+      break;
+    }
+    case 'tailStart':
+      if (marker && dist(player.x, player.y, marker.x, marker.y) < 60) completeStep(ms, world, city);
+      break;
+    case 'tail':
+      updateTail(ms, world, city, step, dt);
+      break;
+    case 'stealShowpiece': {
+      const showpiece = world.state.showpiece;
+      // A wrecked Vantara (with nobody sitting in it) is quietly replaced in the lot.
+      if (showpiece && showpiece.health <= 0 && player.car !== showpiece) world.stageShowpiece();
+      if (player.inCar && player.car === world.state.showpiece) completeStep(ms, world, city);
+      break;
+    }
+    case 'deliverShowpiece': {
+      const showpiece = world.state.showpiece;
+      if (
+        player.inCar && player.car === showpiece && marker
+        && dist(player.x, player.y, marker.x, marker.y) < 46
+        && showpiece.health >= step.minHealth
+      ) completeStep(ms, world, city);
+      break;
+    }
     case 'pickup':
     case 'deliver':
     case 'goto':
@@ -215,8 +463,11 @@ export function updateMissions(ms, world, city) {
 }
 
 /** Fail the running job back to its start (an arrest or a hospital visit). */
-export function failCurrentJob(ms) {
+export function failCurrentJob(ms, world) {
   ms.stepIndex = 0;
   ms.carrying = false;
+  ms.passenger = false;
+  ms.timer = null;
+  if (world) clearTail(ms, world);
   if (ms.sideJob) ms.sideJob.phase = 'pickup';
 }
