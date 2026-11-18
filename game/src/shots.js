@@ -1,14 +1,16 @@
-// The screenshot scenes behind ?shot=start|drive|chase|mission (with &seed=N). Each one
-// stages the real game — the actual world, missions and HUD — into a composed frame and
-// steps it briefly so traffic and people are mid-motion, then holds it. The same seed
-// always gives the same frame. Every scene is dressed for density: extra traffic and
-// pedestrians are placed inside the camera's frame, on their lanes and pavements, with
-// their street bookkeeping set so they hold their lines while the scene steps.
+// The screenshot scenes behind ?shot=start|drive|chase|mission (with &seed=N). Each
+// one stages the real game — the actual world, missions and HUD — into a composed
+// frame and steps it briefly so traffic and people are mid-motion, then holds it.
+// The same seed always gives the same frame. Staging happens in simulation
+// coordinates exactly as it did in the top-down version; what changed is the
+// composition: each scene also hands the 3D renderer a camera (a fixed frame for
+// the cover, a pulled-back chase camera for the pursuit) chosen so everything the
+// scene is about is actually in the picture.
 import { STEP, TRAFFIC } from './config.js';
 import { streetCenterY } from './city.js';
 import { heatForStars } from './wanted.js';
 import { updateMissions } from './missions.js';
-import { SCREEN_PLAY, SCREEN_TITLE } from './render.js';
+import { SCREEN_PLAY, SCREEN_TITLE } from './screens.js';
 
 const IDLE = { moveX: 0, moveY: 0, aimX: null, aimY: null, firing: false, sprint: false, enter: false };
 const DRIVING = { moveX: 0, moveY: -1, aimX: null, aimY: null, firing: false, sprint: false, enter: false };
@@ -46,12 +48,10 @@ function placePeds(world, spots, offset = 0) {
   });
 }
 
-/** The title over a framed view of the noodle bar corner: Dee, her coupe, traffic passing. */
+/** The cover: a fixed elevated frame on the noodle bar corner — Dee under her neon
+ *  sign, her coupe at the kerb, traffic rolling past on the street below. */
 function stageStart(world, city) {
   const noodle = city.specials.noodle;
-  world.state.cameraLock = { x: noodle.x + 90, y: noodle.y - 30 };
-  // Street life in frame: two cars eastbound and one westbound on the street below
-  // the noodle bar, and neighbours out walking the pavements around Dee's corner.
   const laneY = streetCenterY(4);
   const traffic = world.state.cars.filter((car) => car.kind === 'traffic');
   stageTraffic(traffic[0], noodle.x - 316, laneY + TRAFFIC.laneOffset, 1, 210, 4, 3);
@@ -65,11 +65,18 @@ function stageStart(world, city) {
     [noodle.x - 256, noodle.y + 90],
   ], 2);
   stepFor(world, 3.2, IDLE);
-  return SCREEN_TITLE;
+  return {
+    screen: SCREEN_TITLE,
+    camera: {
+      mode: 'fixed',
+      x: noodle.x + 128, y: noodle.y + 238, height: 64,
+      lookX: noodle.x - 8, lookY: noodle.y - 14, lookHeight: 24,
+    },
+  };
 }
 
 /** Mid-errand: Rook in Dee's coupe in moving traffic, the cannery run on the HUD,
- *  rolling past the noodle bar and Rook's own place, both labelled in frame. */
+ *  rolling past the noodle bar and Rook's own place, both signs in frame. */
 function stageDrive(world, missions, city) {
   const noodle = city.specials.noodle;
   // Walk up to Dee: the first mission starts, exactly as it does in play.
@@ -93,13 +100,16 @@ function stageDrive(world, missions, city) {
   ], 5);
   world.putPlayerInCar(coupe);
   updateMissions(missions, world, city); // the enterCoupe step completes, as in play
-  world.state.camera.x = coupe.x + 60;
-  world.state.camera.y = coupe.y;
   stepFor(world, 0.7, DRIVING);
-  return SCREEN_PLAY;
+  // A wandering pedestrian can step into the road during the staged roll and
+  // leave the frame at two stars; the composed shot is a clean errand run.
+  world.setHeat(0);
+  return { screen: SCREEN_PLAY, camera: null };
 }
 
-/** The package run at its worst: three stars, four patrol cars, nowhere to hide. */
+/** The package run at its worst: three stars, four patrol cars in the frame —
+ *  one on each flank, one cutting in ahead, one hard on the bumper — under a
+ *  pulled-back chase camera so the whole pursuit reads at once. */
 function stageChase(world, missions) {
   missions.chainIndex = 1;
   missions.active = true;
@@ -113,30 +123,34 @@ function stageChase(world, missions) {
   coupe.speed = 305;
   world.putPlayerInCar(coupe);
   world.setHeat(heatForStars(3));
-  world.addPoliceAt(838, laneY - 26, 0.1, 322);
-  world.addPoliceAt(822, laneY + 30, -0.08, 330);
-  world.addPoliceAt(742, laneY, 0, 315);
-  world.addPoliceAt(648, laneY + 44, -0.14, 338);
+  // Placed a half-step wide on purpose: the pursuit steering converges on the
+  // coupe while the scene steps, so the flank cars start at the road's edges
+  // and close into an escort formation instead of piling straight onto it.
+  world.addPoliceAt(948, laneY - 50, 0.05, 306); // left flank
+  world.addPoliceAt(952, laneY + 50, -0.05, 303); // right flank
+  world.addPoliceAt(1158, laneY - 8, 0.3, 290); // cutting in ahead
+  world.addPoliceAt(892, laneY + 14, -0.03, 324); // on the bumper
   // Civilian traffic fleeing ahead and coming the other way; neighbours watching.
   const traffic = world.state.cars.filter((car) => car.kind === 'traffic');
-  stageTraffic(traffic[0], 1360, laneY, 1, 265, 5, 6);
-  stageTraffic(traffic[1], 1480, streetCenterY(5) - TRAFFIC.laneOffset, -1, 200, 5, 4);
+  stageTraffic(traffic[0], 1420, laneY, 1, 265, 5, 6);
+  stageTraffic(traffic[1], 1560, streetCenterY(5) - TRAFFIC.laneOffset, -1, 200, 5, 4);
   placePeds(world, [
     [1090, laneY - 62],
     [905, laneY + 32],
     [1200, laneY - 62],
   ], 8);
-  world.state.camera.x = coupe.x + 40;
-  world.state.camera.y = coupe.y;
-  stepFor(world, 0.55, DRIVING);
+  stepFor(world, 0.22, DRIVING);
   // Contact during the staged chase bumps the heat; pin the frame at exactly three stars.
   world.setHeat(heatForStars(3));
-  return SCREEN_PLAY;
+  return {
+    screen: SCREEN_PLAY,
+    camera: { dist: 160, height: 72, lookAhead: 40 },
+  };
 }
 
 /** Mission 5, mid-tail: the grey sedan rolling east out of Port Market with Rook
  *  hanging back inside the band, the tail meter up on the HUD where a good shadow
- *  keeps it, and the bank — where the sedan is headed — in frame ahead. */
+ *  keeps it, and the night city lit up ahead of them both. */
 function stageMission(world, missions, city) {
   missions.chainIndex = 4;
   missions.active = true;
@@ -172,8 +186,6 @@ function stageMission(world, missions, city) {
   for (const ped of world.state.peds) {
     if (Math.abs(ped.y - laneY) < 22 && ped.x > 480 && ped.x < 1500) ped.y = laneY - 62;
   }
-  world.state.camera.x = ride.x + 110;
-  world.state.camera.y = ride.y;
   // Roll for a second, driving the ride the way a player tails: gas on to close,
   // off the pedal to hold the band, brake before the sedan's bumper.
   const steps = Math.round(1.0 / STEP);
@@ -183,22 +195,25 @@ function stageMission(world, missions, city) {
     world.step(STEP, { ...DRIVING, moveY });
   }
   missions.tail.meter = 0.65; // the meter where a good shadow keeps it
-  return SCREEN_PLAY;
+  return {
+    screen: SCREEN_PLAY,
+    camera: { dist: 148, height: 70, lookAhead: 130 },
+  };
 }
 
 /**
- * Set the world and missions to the named scene and return the screen to draw over it.
- * Any other name is the title scene.
+ * Set the world and missions to the named scene and return {screen, camera} for
+ * the renderer and HUD. Any other name is the title scene.
  */
 export function stageShot(name, world, missions, city) {
   switch (name) {
     case 'drive':
-      return { screen: stageDrive(world, missions, city) };
+      return stageDrive(world, missions, city);
     case 'chase':
-      return { screen: stageChase(world, missions) };
+      return stageChase(world, missions);
     case 'mission':
-      return { screen: stageMission(world, missions, city) };
+      return stageMission(world, missions, city);
     default:
-      return { screen: stageStart(world, city) };
+      return stageStart(world, city);
   }
 }

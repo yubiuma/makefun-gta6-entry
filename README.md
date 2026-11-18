@@ -6,10 +6,12 @@
 
 ## Azura Bay: Night Run
 
-An original open-world crime game that plays entirely in the browser, drawn
-top-down and written in plain JavaScript — no engine, no build step, nothing
-fetched from the network. The whole game is the static files under `game/`;
-open the page and the city is just there.
+An original open-world crime game that plays entirely in the browser, in
+full 3D: a third-person chase camera over a night city of lit towers, neon
+storefront signs and streetlit avenues, rendered with three.js (vendored
+into the repo) over a simulation written in plain JavaScript — no build
+step, nothing fetched from the network. The whole game is the static files
+under `game/`; open the page and the city is just there.
 
 You are Rook, a courier with more debts than sense, working the night streets
 of Azura Bay, an island port city of marinas, storefronts and rain-slick
@@ -19,7 +21,8 @@ any car, parked or otherwise; its owner may object, and the Azura Bay police
 definitely will. Traffic flows, pedestrians stroll and scatter, and every
 crime the law sees pushes your wanted level up another star, bringing more
 patrol cars down on you until you break their line of sight and let things
-cool off.
+cool off. On foot the camera stays close over your shoulder; put your foot
+down in a car and it pulls back and leans into the speed.
 
 A six-mission story chain for Dee carries you from a first nervous pickup
 through a package run that draws every cop in the city, a timed dash to get

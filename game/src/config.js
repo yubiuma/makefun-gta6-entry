@@ -1,8 +1,9 @@
-// Every tuning number and colour for Azura Bay: Night Run in one place. The view is a fixed
-// 1280x720 logical area that the renderer scales to the window; the city is a grid of blocks
-// and roads measured in world pixels, and no rule below depends on the screen size.
+// Every tuning number and colour for Azura Bay: Night Run in one place. The city is a
+// grid of blocks and roads measured in world units on the ground plane (x east, y
+// south — the 3D renderer maps them to x and z, with height its own axis), and no rule
+// below depends on the screen size or the camera.
 
-/** The logical view the camera shows, in pixels. */
+/** The logical view the simulation's own camera bookkeeping clamps to, in units. */
 export const VIEW = { width: 1280, height: 720 };
 
 /** The simulation's fixed step, in seconds: 60 updates a second whatever the display's rate. */

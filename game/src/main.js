@@ -1,19 +1,22 @@
 // Boot and the one loop: input is read every frame, the world advances in fixed 1/60 s
-// steps, missions advance once a frame, and the renderer paints what is there. The game
-// moves between five screens: title, play, paused, busted and wasted. Progress (money,
-// story position, courier tally) is kept in localStorage between visits.
+// steps, missions advance once a frame, and the 3D renderer and the DOM HUD paint what
+// is there. The game moves between five screens: title, play, paused, busted and
+// wasted. Progress (money, story position, courier tally) is kept in localStorage
+// between visits.
 //
 // ?seed=N fixes the city and the traffic. ?shot=start|drive|chase|mission (with &seed=N)
-// stages that scene instead of running the loop, paints it twice and sets
-// window.__shotReady for a screenshot.
-import { SAVE_KEY, STEP, VIEW } from './config.js';
+// stages that scene instead of running the loop, paints a few frames so the WebGL
+// scene is fully uploaded, and sets window.__shotReady for a screenshot.
+import { SAVE_KEY, STEP } from './config.js';
 import { createRandom } from './random.js';
 import { createCity } from './city.js';
 import { createWorld, EV_BUSTED, EV_CRASH, EV_ENTER, EV_EXIT, EV_HIT, EV_PED_DOWN, EV_SHOT, EV_STEAL, EV_WASTED } from './world.js';
 import { ACTION_CONFIRM, ACTION_ENTER, ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { CHAIN, cousinSpot, createMissionState, hudExtras, markerFor, objectiveText, objectiveTitle, restoreMissions, updateMissions, failCurrentJob } from './missions.js';
-import { createRenderer, SCREEN_BUSTED, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WASTED } from './render.js';
+import { createRenderer } from './render3d.js';
+import { SCREEN_BUSTED, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WASTED } from './screens.js';
+import { createHud } from './hud.js';
 import { stageShot } from './shots.js';
 
 /** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped. */
@@ -30,6 +33,7 @@ const city = createCity(createRandom(seed));
 const world = createWorld(createRandom(seed ^ 0x9e3779b9), city);
 const missions = createMissionState(createRandom(seed ^ 0x51ab2f));
 const renderer = createRenderer(canvas, city);
+const hud = createHud();
 const audio = createAudio();
 
 // ------------------------------------------------------------ save and load
@@ -74,6 +78,7 @@ function runShot(name) {
   const extras = hudExtras(missions, world);
   const ui = {
     screen: scene.screen,
+    camera: scene.camera ?? null,
     marker: scene.screen === SCREEN_TITLE ? null : markerFor(missions, city, world),
     objective: scene.screen === SCREEN_TITLE ? null : { title: objectiveTitle(missions), text: objectiveText(missions) },
     prompt: null,
@@ -92,8 +97,9 @@ function runShot(name) {
   let painted = 0;
   function paint() {
     renderer.draw(world, ui);
+    hud.update(world, ui, city, renderer.cameraState);
     painted += 1;
-    if (painted < 2) requestAnimationFrame(paint);
+    if (painted < 4) requestAnimationFrame(paint);
     else window.__shotReady = true;
   }
   requestAnimationFrame(paint);
@@ -224,6 +230,7 @@ function runGame() {
     const bay = world.garageBay();
     return {
       screen,
+      camera: null,
       marker: screen === SCREEN_TITLE ? null : markerFor(missions, city, world),
       objective: screen === SCREEN_TITLE ? null : { title: objectiveTitle(missions), text: objectiveText(missions) },
       prompt: currentPrompt(),
@@ -270,7 +277,9 @@ function runGame() {
     const playing = screen === SCREEN_PLAY || screen === SCREEN_TITLE;
     if (playing) {
       const player = world.state.player;
-      const logical = renderer.toLogical(input.mouse.clientX, input.mouse.clientY);
+      // On foot the mouse aims where its ray meets the street; the simulation
+      // still thinks in ground points, so the renderer hands back exactly that.
+      const aimPoint = renderer.toGround(input.mouse.clientX, input.mouse.clientY);
       const hasMouse = input.mouse.clientX !== 0 || input.mouse.clientY !== 0;
 
       // In the Skypak bay, the action key talks to the crew instead of the door:
@@ -300,8 +309,8 @@ function runGame() {
         const ctrl = {
           moveX: screen === SCREEN_PLAY ? input.moveX() : 0,
           moveY: screen === SCREEN_PLAY ? input.moveY() : 0,
-          aimX: hasMouse ? logical.x + world.state.camera.x - VIEW.width / 2 : null,
-          aimY: hasMouse ? logical.y + world.state.camera.y - VIEW.height / 2 : null,
+          aimX: hasMouse && aimPoint ? aimPoint.x : null,
+          aimY: hasMouse && aimPoint ? aimPoint.y : null,
           firing: screen === SCREEN_PLAY && input.firing() && !player.inCar,
           sprint: input.sprint(),
           enter: firstStep && enterPressed,
@@ -334,7 +343,9 @@ function runGame() {
       audio.engineSet(null);
     }
 
-    renderer.draw(world, buildUi());
+    const ui = buildUi();
+    renderer.draw(world, ui);
+    hud.update(world, ui, city, renderer.cameraState);
   }
 
   // Continue is its own key on the title screen.

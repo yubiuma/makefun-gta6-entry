@@ -3,17 +3,160 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
 <title>Azura Bay: Night Run</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #20242c; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0e1c; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #f4f2ea; }
   #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
   /* Read aloud, never shown: the status line screen readers announce. */
   #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  #hud { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  #flash { position: absolute; inset: 0; display: none; }
+
+  .label { font-size: 13px; font-weight: 700; letter-spacing: 0.4px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+  .bar { background: rgba(14, 16, 20, 0.72); border-radius: 5px; overflow: hidden; }
+  .bar > div { height: 100%; border-radius: 4px; transition: width 0.12s linear; }
+
+  #top-left { position: absolute; left: 20px; top: 16px; }
+  #hp-bar { width: 228px; height: 17px; margin-top: 4px; }
+  #car-wrap { display: none; align-items: center; gap: 8px; margin-top: 7px; }
+  #car-wrap .label { font-size: 11px; color: #b9bdc7; }
+  #car-bar { width: 150px; height: 10px; }
+
+  #top-right { position: absolute; right: 22px; top: 12px; text-align: right; }
+  #money { font-size: 30px; font-weight: 800; color: #9fe870; text-shadow: 0 2px 6px rgba(0,0,0,0.85); }
+  #stars { font-size: 27px; font-weight: 800; line-height: 1.1; text-shadow: 0 2px 6px rgba(0,0,0,0.85); }
+  #bust-wrap { display: none; margin-top: 2px; }
+  #bust-label { font-size: 11px; font-weight: 700; color: #ff5d5d; text-align: right; }
+  #bust-bar { width: 150px; height: 8px; margin-left: auto; margin-top: 2px; }
+  #bust-fill { background: #ff5d5d; }
+  #carrying, #passenger-line { display: none; font-size: 14px; font-weight: 700; color: #ffc93e; margin-top: 6px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+
+  #objective { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); background: rgba(18, 21, 27, 0.88); border: 1.4px solid rgba(255, 201, 62, 0.4); border-radius: 10px; padding: 8px 22px 10px; text-align: center; max-width: 72vw; }
+  #obj-title { font-size: 13px; font-weight: 700; color: #ffc93e; letter-spacing: 0.6px; }
+  #obj-text { font-size: 19px; font-weight: 600; margin-top: 2px; white-space: nowrap; }
+
+  #timer { position: absolute; left: 50%; top: 92px; transform: translateX(-50%); font-size: 30px; font-weight: 800; display: none; text-shadow: 0 2px 6px rgba(0,0,0,0.85); }
+  #meter-wrap { position: absolute; left: 50%; top: 94px; transform: translateX(-50%); width: 300px; display: none; }
+  #meter-label { font-size: 12px; font-weight: 700; color: #b9bdc7; margin-bottom: 3px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+  #meter-bar { height: 11px; }
+  #minimap { position: absolute; left: 14px; bottom: 14px; border-radius: 10px; display: none; }
+
+  #speed { position: absolute; right: 22px; bottom: 20px; display: none; text-align: right; text-shadow: 0 2px 6px rgba(0,0,0,0.85); }
+  #speed-num { font-size: 26px; font-weight: 800; }
+  #speed .unit { font-size: 13px; font-weight: 600; color: #b9bdc7; margin-left: 5px; }
+
+  #prompt { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); background: rgba(18, 21, 27, 0.88); border-radius: 9px; padding: 8px 18px; font-size: 18px; font-weight: 700; display: none; white-space: nowrap; }
+
+  #banner { position: absolute; left: 50%; top: 108px; transform: translate(-50%, 0); width: 560px; max-width: 86vw; background: rgba(18, 21, 27, 0.88); border: 2px solid #ffc93e; border-radius: 12px; padding: 12px 18px 14px; text-align: center; display: none; }
+  #banner-title { font-size: 25px; font-weight: 800; color: #ffc93e; }
+  #banner-sub { font-size: 16px; margin-top: 3px; }
+
+  #edge-arrow { position: absolute; display: none; width: 0; height: 0; z-index: 5; }
+  #arrow-glyph { position: absolute; left: -14px; top: -16px; font-size: 26px; color: #ffc93e; text-shadow: 0 2px 6px rgba(0,0,0,0.9); }
+  #arrow-dist { position: absolute; left: -20px; top: 12px; width: 40px; text-align: center; font-size: 13px; font-weight: 700; color: #ffc93e; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; }
+  #title-screen { background: linear-gradient(180deg, rgba(12,14,20,0.62) 0%, rgba(12,14,20,0.18) 45%, rgba(12,14,20,0.66) 100%); text-align: center; padding-top: 7vh; }
+  #game-title { font-size: 96px; font-weight: 800; letter-spacing: 6px; color: #ffffff; text-shadow: 0 4px 30px rgba(0,0,0,0.9); line-height: 1; }
+  #game-subtitle { font-size: 40px; font-weight: 800; color: #ffc93e; margin-top: 8px; text-shadow: 0 3px 18px rgba(0,0,0,0.9); }
+  #title-story { font-size: 19px; line-height: 1.5; margin-top: 34px; text-shadow: 0 2px 8px rgba(0,0,0,0.95); }
+  #title-start { font-size: 21px; font-weight: 700; color: #ffc93e; margin-top: 42px; text-shadow: 0 2px 8px rgba(0,0,0,0.95); }
+  #save-line { font-size: 21px; font-weight: 700; margin-top: 10px; display: none; text-shadow: 0 2px 8px rgba(0,0,0,0.95); }
+  #title-controls { font-size: 16px; color: #d7dae0; line-height: 1.65; margin-top: 40px; text-shadow: 0 2px 8px rgba(0,0,0,0.95); }
+  #mute-line { font-size: 16px; color: #ff5d5d; margin-top: 12px; display: none; }
+
+  #panel-screen { justify-content: center; background: rgba(10, 12, 16, 0.45); }
+  #panel-box { background: rgba(18, 21, 27, 0.92); border: 1.4px solid rgba(255,255,255,0.16); border-radius: 14px; padding: 26px 44px 22px; text-align: center; min-width: 480px; max-width: 86vw; }
+  #panel-title { font-size: 52px; font-weight: 800; line-height: 1.1; }
+  #panel-lines { font-size: 18px; color: #b9bdc7; line-height: 1.65; margin-top: 12px; }
+  #panel-prompt { font-size: 19px; font-weight: 700; color: #ffc93e; margin-top: 18px; }
 </style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
 </head>
 <body>
-<canvas id="game" aria-label="Azura Bay: Night Run — a top-down open-world crime game. Walk and drive with WASD, aim with the mouse, press E to enter cars."></canvas>
+<canvas id="game" aria-label="Azura Bay: Night Run — a 3D open-world crime game. Walk and drive with WASD, aim with the mouse, press E to enter cars."></canvas>
 <p id="status" role="status" aria-live="polite"></p>
+
+<div id="hud">
+  <div id="flash"></div>
+
+  <div id="top-left">
+    <div class="label">HEALTH</div>
+    <div class="bar" id="hp-bar"><div id="hp-fill"></div></div>
+    <div id="car-wrap">
+      <span class="label">CAR</span>
+      <div class="bar" id="car-bar"><div id="car-fill"></div></div>
+    </div>
+  </div>
+
+  <div id="top-right">
+    <div id="money">$0</div>
+    <div id="stars"></div>
+    <div id="bust-wrap">
+      <div id="bust-label">BUSTED</div>
+      <div class="bar" id="bust-bar"><div id="bust-fill"></div></div>
+    </div>
+    <div id="carrying">CARRYING: PACKAGE</div>
+    <div id="passenger-line">PASSENGER: MILO</div>
+  </div>
+
+  <div id="objective">
+    <div id="obj-title"></div>
+    <div id="obj-text"></div>
+  </div>
+  <div id="timer"></div>
+  <div id="meter-wrap">
+    <div id="meter-label"></div>
+    <div class="bar" id="meter-bar"><div id="meter-fill"></div></div>
+  </div>
+
+  <canvas id="minimap" width="196" height="196"></canvas>
+
+  <div id="speed"><span id="speed-num">0</span><span class="unit">km/h</span></div>
+  <div id="prompt"></div>
+
+  <div id="banner">
+    <div id="banner-title"></div>
+    <div id="banner-sub"></div>
+  </div>
+
+  <div id="edge-arrow">
+    <div id="arrow-glyph">➤</div>
+    <div id="arrow-dist"></div>
+  </div>
+
+  <div id="title-screen" class="screen">
+    <div id="game-title">AZURA BAY</div>
+    <div id="game-subtitle">— NIGHT RUN —</div>
+    <div id="title-story">
+      Rook owes money all over Azura Bay. Dee Voss, fixer and noodle chef,<br>
+      has work: six jobs, one dented coupe, and every cop in the city.<br>
+      Drive anything. Run from everyone. Try not to get busted.
+    </div>
+    <div id="title-start">ENTER — Start a new game</div>
+    <div id="save-line"></div>
+    <div id="title-controls">
+      On foot: WASD / arrows move · mouse aims · click shoots · Shift sprints<br>
+      In a car: W/S accelerate &amp; brake · A/D steer · E or F get in / out<br>
+      Skypak Garage bay: full repair — and the law forgets a star<br>
+      P pause · M mute · Lose the stars to cool off
+    </div>
+    <div id="mute-line">SOUND OFF (M)</div>
+  </div>
+
+  <div id="panel-screen" class="screen">
+    <div id="panel-box">
+      <div id="panel-title"></div>
+      <div id="panel-lines"></div>
+      <div id="panel-prompt"></div>
+    </div>
+  </div>
+</div>
+
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

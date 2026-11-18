@@ -4,6 +4,7 @@
 // simulation collides with or navigates by comes from here; the city itself never changes.
 import { CITY } from './config.js';
 import { pick, range, rangeInt } from './random.js';
+import { hash2 } from './geom.js';
 
 const ROOF_COLORS = ['#c96f4a', '#b8574f', '#7d8ca3', '#94a187', '#c2a15c', '#8a6f9e', '#5f8a8b', '#a3a380', '#bf7f68', '#6d7f99'];
 const WALL_COLORS = ['#e3d7c3', '#d9c6a5', '#cbb59b', '#e8e0d0', '#d3b8a6', '#c9d1c0'];
@@ -70,6 +71,11 @@ function makeBuilding(random, rect, index, label, roof) {
     label: label ?? null,
     roof: roof ?? pick(random, ROOF_COLORS),
     wall: pick(random, WALL_COLORS),
+    /** How tall the 3D renderer raises this building, in world units. Derived from a
+     *  hash of the building's index rather than the random stream, so the street
+     *  layout the simulation was tuned against keeps its exact shape: low-rise
+     *  blocks near the edges, towers where two hashes agree it should climb. */
+    height: 34 + hash2(index, 913) * 62 + (hash2(index, 517) > 0.82 ? 55 : 0),
     /** A rooftop box (air-con unit, water tank) on some buildings, as a fraction rect. */
     prop: random() < 0.55 ? { fx: range(random, 0.08, 0.6), fy: range(random, 0.08, 0.6), fw: range(random, 0.16, 0.3), fh: range(random, 0.14, 0.26) } : null,
   };
