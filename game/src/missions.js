@@ -297,6 +297,9 @@ function failTailStep(ms, world, reason) {
   ms.justFailed = { title: CHAIN[ms.chainIndex].title, reason };
 }
 
+/** Below this speed (px/s) the tail sedan counts as stopped: snarled in traffic. */
+const SEDAN_STOPPED_SPEED = 30;
+
 /**
  * The tail step, one update: keep the sedan rolling, watch the distance band, the
  * spook rules and the meter, and settle the step when the sedan parks up.
@@ -356,11 +359,18 @@ function updateTail(ms, world, city, step, dt) {
   }
 
   const d = dist(player.x, player.y, target.x, target.y);
+  // A sedan snarled in traffic cannot be spooked: while it is barely moving,
+  // sitting close behind it is the jam's fault, not the player's, so the spook
+  // clock holds where it is instead of filling. It only runs while the sedan
+  // is actually rolling, and it still drains as before once the player backs off.
+  const sedanStopped = Math.abs(target.speed) < SEDAN_STOPPED_SPEED;
   if (d < TAIL.tooClose) {
-    ms.tail.closeTime += dt;
-    if (ms.tail.closeTime > TAIL.spookSeconds) {
-      failTailStep(ms, world, 'Too close, too long — the driver made you. Back off and start the tail again.');
-      return;
+    if (!sedanStopped) {
+      ms.tail.closeTime += dt;
+      if (ms.tail.closeTime > TAIL.spookSeconds) {
+        failTailStep(ms, world, 'Too close, too long — the driver made you. Back off and start the tail again.');
+        return;
+      }
     }
   } else {
     ms.tail.closeTime = Math.max(0, ms.tail.closeTime - dt * 1.5);

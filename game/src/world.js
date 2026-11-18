@@ -6,7 +6,7 @@
 // is close enough to witness them.
 import { CAR, CITY, GARAGE, GUN, PARTICLE_POOL, PED, PLAYER, POLICE, TAIL, TRAFFIC, VIEW, WANTED } from './config.js';
 import { pick, range, rangeInt } from './random.js';
-import { angleDiff, angleTurn, circleRectResolve, clamp, dist, dist2 } from './geom.js';
+import { angleDiff, angleTurn, circleRectResolve, clamp, dist, dist2, pointInRect } from './geom.js';
 import { isOnStreet, randomStreetPoint, streetCenterX, streetCenterY } from './city.js';
 import { clearWanted, createWanted, heatForStars, policeQuota, reportCrime, setHeat as setWantedHeat, updateWanted } from './wanted.js';
 
@@ -122,12 +122,49 @@ export function createWorld(random, city) {
 
   // ------------------------------------------------------------ witnesses and crime
 
+  /** A witness closer than this (px) always has a view, buildings or not. */
+  const CLEAR_VIEW = 160;
+
+  /** True when segments ab and cd cross (proper intersection; touching does not count). */
+  function segmentsCross(ax, ay, bx, by, cx, cy, dx, dy) {
+    const d1 = (dx - cx) * (ay - cy) - (dy - cy) * (ax - cx);
+    const d2 = (dx - cx) * (by - cy) - (dy - cy) * (bx - cx);
+    const d3 = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    const d4 = (bx - ax) * (dy - ay) - (by - ay) * (dx - ax);
+    return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+  }
+
+  /** True when the straight segment ab runs into the rectangle. */
+  function segmentHitsRect(ax, ay, bx, by, rect) {
+    if (pointInRect(ax, ay, rect) || pointInRect(bx, by, rect)) return true;
+    const x2 = rect.x + rect.w;
+    const y2 = rect.y + rect.h;
+    return segmentsCross(ax, ay, bx, by, rect.x, rect.y, x2, rect.y)
+      || segmentsCross(ax, ay, bx, by, x2, rect.y, x2, y2)
+      || segmentsCross(ax, ay, bx, by, x2, y2, rect.x, y2)
+      || segmentsCross(ax, ay, bx, by, rect.x, y2, rect.x, rect.y);
+  }
+
+  /**
+   * Whether a witness at (ax, ay) can actually see the point (bx, by): a close
+   * witness always can; a farther one needs the straight line between the two
+   * to stay clear of every building. Streets are open ground, so this is what
+   * stops a witness on the far side of a block from "seeing" through it.
+   */
+  function canSee(ax, ay, bx, by) {
+    if (dist2(ax, ay, bx, by) < CLEAR_VIEW * CLEAR_VIEW) return true;
+    for (const rect of city.colliders) {
+      if (segmentHitsRect(ax, ay, bx, by, rect)) return false;
+    }
+    return true;
+  }
+
   function witnessed(x, y) {
     for (const ped of state.peds) {
-      if (ped.state !== 'down' && dist2(x, y, ped.x, ped.y) < WANTED.witness.ped * WANTED.witness.ped) return true;
+      if (ped.state !== 'down' && dist2(x, y, ped.x, ped.y) < WANTED.witness.ped * WANTED.witness.ped && canSee(ped.x, ped.y, x, y)) return true;
     }
     for (const car of state.cars) {
-      if (car.kind === 'police' && dist2(x, y, car.x, car.y) < WANTED.witness.police * WANTED.witness.police) return true;
+      if (car.kind === 'police' && dist2(x, y, car.x, car.y) < WANTED.witness.police * WANTED.witness.police && canSee(car.x, car.y, x, y)) return true;
     }
     return false;
   }
@@ -1040,9 +1077,12 @@ export function createWorld(random, city) {
     stepParticles(dt);
     stepPolice(dt);
 
+    // Seen means an officer in range with an actual view of the player: an
+    // officer stuck behind a building does not hold the heat, however close
+    // the crow flies. That is what makes breaking line of sight an escape.
     let seen = false;
     for (const car of state.cars) {
-      if (car.kind === 'police' && dist2(car.x, car.y, player.x, player.y) < WANTED.sightRange * WANTED.sightRange) {
+      if (car.kind === 'police' && dist2(car.x, car.y, player.x, player.y) < WANTED.sightRange * WANTED.sightRange && canSee(car.x, car.y, player.x, player.y)) {
         seen = true;
         break;
       }
