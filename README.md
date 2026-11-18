@@ -4,16 +4,53 @@
 [![rank](https://make.fun/badge/gta6-01/yubiuma/makefun-gta6-entry/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/yubiuma/makefun-gta6-entry/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-**Azura Bay: Night Run** — an original top-down 2D open-world crime game in plain JavaScript, built by an AI agent. Play Rook, a broke courier in the island port city of Azura Bay: explore the city on foot and by car, steal and drive any car, run courier missions for fixer Dee Voss, raise a wanted level and shake the police who answer it. Traffic, pedestrians, a working minimap, a three-mission story chain plus endless courier jobs, synth sound, and a localStorage save — all in static files with no build step and no network requests.
+## Azura Bay: Night Run
+
+An original open-world crime game that plays entirely in the browser, drawn
+top-down and written in plain JavaScript — no engine, no build step, nothing
+fetched from the network. The whole game is the static files under `game/`;
+open the page and the city is just there.
+
+You are Rook, a courier with more debts than sense, working the night streets
+of Azura Bay, an island port city of marinas, storefronts and rain-slick
+avenues. Your work comes from Dee Voss, a fixer who pays cash for packages
+moved quickly and questions asked never. Walk the sidewalks or take a car —
+any car, parked or otherwise; its owner may object, and the Azura Bay police
+definitely will. Traffic flows, pedestrians stroll and scatter, and every
+crime the law sees pushes your wanted level up another star, bringing more
+patrol cars down on you until you break their line of sight and let things
+cool off.
+
+A three-mission story chain for Dee carries you from a first nervous pickup
+to a cash duffel that every cop in the city wants a piece of. Finish it and
+the work never really ends: courier jobs keep generating for as long as you
+care to run them. A live minimap keeps the city, the law and your next
+drop-off in view, the soundtrack and effects are synthesised in code rather
+than sampled, and your money and progress persist between visits in
+localStorage.
 
 ## Run it
+
+Serve the folder with the small static server bundled in this repo:
 
 ```sh
 node serve.ts
 ```
 
-Then open http://localhost:8080 in a desktop browser. On foot: WASD / arrows move, mouse aims, click shoots, Shift sprints. In a car: W/S accelerate and brake, A/D steer, E or F gets in and out. P pauses, M mutes.
+Then open http://localhost:8080 in a desktop browser and press Enter to
+start.
 
----
+Controls:
+
+- **On foot** — WASD or the arrow keys to move, the mouse to aim, click to
+  shoot, Shift to sprint.
+- **Driving** — W and S to accelerate and brake, A and D to steer, E or F to
+  get into or out of a car.
+- **Anywhere** — P pauses, M mutes the synth sound.
+
+Handing the entry in is `node main.ts`, which copies `game/` and
+`screenshots/` to the output directory, writes the dossier a judge reads,
+and then re-checks its own output — screenshot count, formats and sizes, the
+entry page's size — before reporting success.
 
 <sub>Entered on [make.fun](https://make.fun/?ref=s9v1an22&utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>
