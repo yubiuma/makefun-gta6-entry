@@ -37,19 +37,48 @@
   #obj-title { font-size: 13px; font-weight: 700; color: #ffc93e; letter-spacing: 0.6px; }
   #obj-text { font-size: 19px; font-weight: 600; margin-top: 2px; white-space: nowrap; }
 
-  #timer { position: absolute; left: 50%; top: 92px; transform: translateX(-50%); font-size: 30px; font-weight: 800; display: none; text-shadow: 0 2px 6px rgba(0,0,0,0.85); }
-  #meter-wrap { position: absolute; left: 50%; top: 94px; transform: translateX(-50%); width: 300px; display: none; }
+  #story-row { display: none; justify-content: center; align-items: center; gap: 14px; margin-top: 6px; padding-top: 5px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #b9bdc7; }
+  #story-pips { display: inline-flex; gap: 4px; margin-left: 7px; }
+  #story-pips i { width: 15px; height: 6px; border-radius: 2px; background: rgba(255,255,255,0.16); }
+  #story-pips i.done { background: #9fe870; }
+  #story-pips i.now { background: #ffc93e; box-shadow: 0 0 6px rgba(255,201,62,0.8); }
+  #story-row b { color: #ffc93e; }
+
+  #dispatch { display: none; margin: 8px 0 0 auto; width: 256px; background: rgba(10, 13, 22, 0.86); border: 1px solid rgba(90, 130, 255, 0.45); border-radius: 8px; padding: 6px 10px 7px; text-align: left; font-variant-numeric: tabular-nums; }
+  #dispatch-head { display: flex; justify-content: space-between; font-size: 10.5px; font-weight: 800; letter-spacing: 1.1px; color: #8fb0ff; margin-bottom: 3px; }
+  #dispatch-head b { color: #ff5d5d; }
+  .unit { display: grid; grid-template-columns: 11px 76px 1fr 46px; align-items: center; font-size: 12px; font-weight: 700; line-height: 1.6; }
+  .unit i { width: 7px; height: 7px; border-radius: 50%; }
+  .unit .role { color: #b9bdc7; font-size: 10.5px; letter-spacing: 0.6px; }
+  .unit .role.hot { color: #ff7b7b; }
+  .unit .dist { text-align: right; color: #9aa3b5; }
+
+  #radio { position: absolute; right: 16px; bottom: 88px; display: none; text-align: right; background: rgba(10, 13, 22, 0.72); border-radius: 8px; padding: 5px 10px 6px; text-shadow: 0 1px 4px rgba(0,0,0,0.9); }
+  #radio-station { font-size: 11px; font-weight: 800; letter-spacing: 1.2px; color: #7fe3ff; }
+  #radio-eq { display: inline-flex; gap: 2px; align-items: flex-end; height: 10px; margin-right: 6px; }
+  #radio-eq i { width: 3px; background: #7fe3ff; border-radius: 1px; }
+  #radio-track { font-size: 14px; font-weight: 700; margin-top: 1px; max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #radio-track span { color: #b9bdc7; font-weight: 600; }
+
+  #dialogue { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: none; width: 540px; max-width: 50vw; background: rgba(14, 12, 20, 0.9); border: 1.4px solid rgba(255, 126, 182, 0.55); border-radius: 12px; padding: 9px 14px 10px 10px; box-shadow: 0 0 18px rgba(255, 126, 182, 0.18); }
+  #dee-portrait { float: left; width: 60px; height: 60px; border-radius: 9px; margin-right: 12px; border: 1px solid rgba(255,126,182,0.6); }
+  #dialogue-name { font-size: 11.5px; font-weight: 800; letter-spacing: 1.2px; color: #ff9ec7; }
+  #dialogue-via { color: #8f93a0; margin-left: 7px; letter-spacing: 0.6px; }
+  #dialogue-text { font-size: 16px; font-weight: 600; line-height: 1.35; margin-top: 3px; }
+
+  #timer { position: absolute; left: 50%; top: 116px; transform: translateX(-50%); font-size: 30px; font-weight: 800; display: none; text-shadow: 0 2px 6px rgba(0,0,0,0.85); }
+  #meter-wrap { position: absolute; left: 50%; top: 118px; transform: translateX(-50%); width: 300px; display: none; }
   #meter-label { font-size: 12px; font-weight: 700; color: #b9bdc7; margin-bottom: 3px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
   #meter-bar { height: 11px; }
   #minimap { position: absolute; left: 14px; bottom: 14px; border-radius: 10px; display: none; }
 
-  #speed { position: absolute; right: 22px; bottom: 20px; display: none; text-align: right; text-shadow: 0 2px 6px rgba(0,0,0,0.85); }
+  #speed { position: absolute; right: 22px; bottom: 20px; display: none; text-align: right; white-space: nowrap; text-shadow: 0 2px 6px rgba(0,0,0,0.85); }
   #speed-num { font-size: 26px; font-weight: 800; }
   #speed .unit { font-size: 13px; font-weight: 600; color: #b9bdc7; margin-left: 5px; }
 
   #prompt { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); background: rgba(18, 21, 27, 0.88); border-radius: 9px; padding: 8px 18px; font-size: 18px; font-weight: 700; display: none; white-space: nowrap; }
 
-  #banner { position: absolute; left: 50%; top: 108px; transform: translate(-50%, 0); width: 560px; max-width: 86vw; background: rgba(18, 21, 27, 0.88); border: 2px solid #ffc93e; border-radius: 12px; padding: 12px 18px 14px; text-align: center; display: none; }
+  #banner { position: absolute; left: 50%; top: 132px; transform: translate(-50%, 0); width: 560px; max-width: 86vw; background: rgba(18, 21, 27, 0.88); border: 2px solid #ffc93e; border-radius: 12px; padding: 12px 18px 14px; text-align: center; display: none; }
   #banner-title { font-size: 25px; font-weight: 800; color: #ffc93e; }
   #banner-sub { font-size: 16px; margin-top: 3px; }
 
@@ -105,11 +134,16 @@
     </div>
     <div id="carrying">CARRYING: PACKAGE</div>
     <div id="passenger-line">PASSENGER: MILO</div>
+    <div id="dispatch">
+      <div id="dispatch-head"><span>AZURA BAY PD · DISPATCH</span><b>● LIVE</b></div>
+      <div id="dispatch-rows"></div>
+    </div>
   </div>
 
   <div id="objective">
     <div id="obj-title"></div>
     <div id="obj-text"></div>
+    <div id="story-row"><span>STORY <b id="story-count"></b><span id="story-pips"></span></span><span id="story-rep"></span></div>
   </div>
   <div id="timer"></div>
   <div id="meter-wrap">
@@ -119,6 +153,15 @@
 
   <canvas id="minimap" width="196" height="196"></canvas>
 
+  <div id="radio">
+    <div id="radio-station"><span id="radio-eq"><i></i><i></i><i></i><i></i></span><span id="radio-name"></span></div>
+    <div id="radio-track"></div>
+  </div>
+  <div id="dialogue">
+    <canvas id="dee-portrait" width="120" height="120"></canvas>
+    <div id="dialogue-name">DEE VOSS<span id="dialogue-via"></span></div>
+    <div id="dialogue-text"></div>
+  </div>
   <div id="speed"><span id="speed-num">0</span><span class="unit">km/h</span></div>
   <div id="prompt"></div>
 

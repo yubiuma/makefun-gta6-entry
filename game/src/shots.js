@@ -22,6 +22,12 @@ function earnedBefore(chainIndex) {
   return POCKET + CHAIN.slice(0, chainIndex).reduce((sum, mission) => sum + mission.reward, 0);
 }
 
+/** Dee's line for the story step a scene is staged on, held fully faded in. */
+function deeSays(missions) {
+  const text = CHAIN[missions.chainIndex].steps[missions.stepIndex].dee;
+  return { text, via: 'ON THE PHONE', t: 1, duration: 99 };
+}
+
 function stepFor(world, seconds, ctrl) {
   const steps = Math.round(seconds / STEP);
   for (let i = 0; i < steps; i += 1) world.step(STEP, ctrl);
@@ -116,7 +122,7 @@ function stageDrive(world, missions, city) {
     if (ped.x > coupe.x - 260 && ped.x < coupe.x + 10 && Math.abs(ped.y - laneY) < 140) ped.x += 640;
   }
   world.state.money = earnedBefore(0);
-  return { screen: SCREEN_PLAY, camera: null };
+  return { screen: SCREEN_PLAY, camera: null, dialogue: deeSays(missions) };
 }
 
 /** The package run at its worst: three stars, four patrol cars in the frame —
@@ -212,6 +218,7 @@ function stageMission(world, missions, city) {
   return {
     screen: SCREEN_PLAY,
     camera: { dist: 148, height: 70, lookAhead: 130 },
+    dialogue: deeSays(missions),
   };
 }
 

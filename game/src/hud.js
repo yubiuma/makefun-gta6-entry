@@ -3,10 +3,72 @@
 // instruments the top-down version painted, in the same places, reading the same
 // ui object main.js builds each frame. Only the world view went 3D; the cockpit
 // stayed familiar on purpose.
-import { CAR, CITY, PALETTE, PLAYER } from './config.js';
+import { CALLSIGNS, CAR, CITY, PALETTE, PLAYER, RADIO } from './config.js';
 import { angleDiff, clamp } from './geom.js';
 
 const MINIMAP_SIZE = 196;
+
+/** Dee's phone portrait, painted once: black bob and fringe, pink jacket, phone at
+ *  her ear, and the red noodle-bar neon behind her rimming one side of her face. */
+function drawPortrait(canvas) {
+  const g = canvas.getContext('2d');
+  const W = canvas.width;
+  const bg = g.createLinearGradient(0, 0, 0, W);
+  bg.addColorStop(0, '#2a1630');
+  bg.addColorStop(1, '#0d0a14');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, W, W);
+  const glow = g.createRadialGradient(W * 0.8, W * 0.18, 2, W * 0.8, W * 0.18, W * 0.62);
+  glow.addColorStop(0, 'rgba(230, 80, 60, 0.8)');
+  glow.addColorStop(1, 'rgba(230, 80, 60, 0)');
+  g.fillStyle = glow;
+  g.fillRect(0, 0, W, W);
+  const shape = (fill, draw) => { g.fillStyle = fill; g.beginPath(); draw(); g.fill(); };
+  // Jacket, shoulders and a dark top at the collar.
+  shape(PALETTE.npc, () => {
+    g.moveTo(W * 0.06, W);
+    g.quadraticCurveTo(W * 0.12, W * 0.71, W * 0.5, W * 0.69);
+    g.quadraticCurveTo(W * 0.88, W * 0.71, W * 0.94, W);
+  });
+  shape('#1b1720', () => { g.moveTo(W * 0.41, W * 0.7); g.lineTo(W * 0.5, W * 0.88); g.lineTo(W * 0.59, W * 0.7); });
+  // Hair behind the head, then neck and face.
+  shape('#16121c', () => g.ellipse(W * 0.5, W * 0.42, W * 0.25, W * 0.25, 0, 0, Math.PI * 2));
+  g.fillRect(W * 0.25, W * 0.4, W * 0.5, W * 0.22);
+  shape('#b98a6c', () => g.rect(W * 0.43, W * 0.55, W * 0.14, W * 0.17));
+  shape('#d6a585', () => g.ellipse(W * 0.5, W * 0.44, W * 0.165, W * 0.2, 0, 0, Math.PI * 2));
+  // The fringe: a straight cut just above the brows.
+  shape('#16121c', () => g.ellipse(W * 0.5, W * 0.31, W * 0.2, W * 0.1, 0, Math.PI, 0));
+  g.fillRect(W * 0.31, W * 0.3, W * 0.38, W * 0.07);
+  // Eyes (one brow raised), lips.
+  g.fillStyle = '#1b1720';
+  g.fillRect(W * 0.4, W * 0.435, W * 0.065, W * 0.026);
+  g.fillRect(W * 0.535, W * 0.435, W * 0.065, W * 0.026);
+  g.fillRect(W * 0.53, W * 0.395, W * 0.08, W * 0.016);
+  g.fillStyle = '#b8456a';
+  g.fillRect(W * 0.45, W * 0.545, W * 0.1, W * 0.026);
+  // Phone at her ear, and the neon rim light.
+  g.fillStyle = '#2b2f36';
+  g.fillRect(W * 0.66, W * 0.37, W * 0.07, W * 0.18);
+  g.strokeStyle = 'rgba(255, 150, 190, 0.85)';
+  g.lineWidth = W * 0.018;
+  g.beginPath();
+  g.ellipse(W * 0.5, W * 0.44, W * 0.165, W * 0.2, 0, -1.1, 0.9);
+  g.stroke();
+}
+
+/** A patrol unit's job in the pursuit, read from where it sits relative to the player. */
+function unitRole(player, car, heading) {
+  const dx = car.x - player.x;
+  const dy = car.y - player.y;
+  const d = Math.hypot(dx, dy);
+  const ahead = dx * Math.cos(heading) + dy * Math.sin(heading);
+  const side = -dx * Math.sin(heading) + dy * Math.cos(heading);
+  if (d > 520) return ['RESPONDING', false];
+  if (ahead > 70 && Math.abs(side) < 60) return ['CUTTING AHEAD', true];
+  if (Math.abs(side) >= 15 && ahead > -70 && ahead < 90) return [side < 0 ? 'FLANKING L' : 'FLANKING R', true];
+  if (ahead < 0 && Math.abs(side) < 30 && d < 180) return ['ON BUMPER', true];
+  return [ahead < 0 ? 'PURSUING' : 'INTERCEPT', false];
+}
 
 function el(id) {
   return document.getElementById(id);
@@ -50,6 +112,20 @@ export function createHud() {
   const panelTitle = el('panel-title');
   const panelLines = el('panel-lines');
   const panelPrompt = el('panel-prompt');
+  const dispatch = el('dispatch');
+  const dispatchRows = el('dispatch-rows');
+  const radio = el('radio');
+  const radioName = el('radio-name');
+  const radioTrack = el('radio-track');
+  const radioBars = [...el('radio-eq').children];
+  const dialogue = el('dialogue');
+  const dialogueVia = el('dialogue-via');
+  const dialogueText = el('dialogue-text');
+  const storyRow = el('story-row');
+  const storyCount = el('story-count');
+  const storyPips = el('story-pips');
+  const storyRep = el('story-rep');
+  drawPortrait(el('dee-portrait'));
   const minimap = el('minimap');
   const mctx = minimap.getContext('2d');
 
@@ -253,6 +329,86 @@ export function createHud() {
     }
   }
 
+  // ------------------------------------------------------------ storytelling
+
+  /** STORY n/N with a pip per mission, and courier rep stars (3, 8, 15 side jobs). */
+  function updateStory(ui) {
+    const story = ui.story;
+    storyRow.style.display = story ? 'flex' : 'none';
+    if (!story) return;
+    const current = Math.min(story.total, story.done + (story.active ? 1 : 0));
+    storyCount.textContent = `${current}/${story.total}`;
+    while (storyPips.childElementCount < story.total) storyPips.appendChild(document.createElement('i'));
+    [...storyPips.children].forEach((pip, i) => {
+      pip.className = i < story.done ? 'done' : i === story.done && story.active ? 'now' : '';
+    });
+    const rep = [3, 8, 15].filter((n) => story.sideJobs >= n).length;
+    storyRep.innerHTML = `COURIER REP <b>${'★'.repeat(rep)}${'☆'.repeat(3 - rep)}</b>`;
+  }
+
+  /** Police dispatch: every unit on the player, nearest first, with callsign, job and range. */
+  function updateDispatch(world, ui) {
+    const state = world.state;
+    if (ui.screen !== 'play' || state.wanted.stars === 0) {
+      dispatch.style.display = 'none';
+      return;
+    }
+    const player = state.player;
+    const heading = player.inCar && player.car ? player.car.angle : player.angle;
+    const units = state.cars.filter((car) => car.kind === 'police').map((car, n) => ({
+      call: CALLSIGNS[n % CALLSIGNS.length], n,
+      role: unitRole(player, car, heading),
+      d: Math.hypot(car.x - player.x, car.y - player.y),
+    }));
+    units.sort((a, b) => a.d - b.d);
+    const row = (dot, call, role, hot, d) => `<div class="unit"><i style="background:${dot}"></i><span>${call}</span>`
+      + `<span class="role${hot ? ' hot' : ''}">${role}</span><span class="dist">${d}</span></div>`;
+    const rows = units.slice(0, 5).map((u) => {
+      const red = Math.floor(state.time * 3.75 + u.n) % 2 === 0;
+      return row(red ? PALETTE.lightRed : PALETTE.lightBlue, u.call, u.role[0], u.role[1], `${Math.round(u.d / 10)}m`);
+    });
+    if (ui.air) rows.push(row('#e8f0ff', 'AIR-1', 'SEARCHLIGHT ON', true, `${Math.round(ui.air.d / 10)}m`));
+    if (rows.length === 0) rows.push(row('transparent', 'ALL UNITS', 'BOLO · SEARCHING', false, ''));
+    dispatchRows.innerHTML = rows.join('');
+    dispatch.style.display = 'block';
+  }
+
+  /** The car radio: station from the car's index, track from the game clock. */
+  function updateRadio(world, ui) {
+    const state = world.state;
+    const player = state.player;
+    if (ui.screen !== 'play' || !player.inCar || !player.car) {
+      radio.style.display = 'none';
+      return;
+    }
+    const carIndex = Math.max(0, state.cars.indexOf(player.car));
+    const station = RADIO[(carIndex + 2) % RADIO.length];
+    const [title, artist] = station.tracks[(Math.floor(state.time / 140) + carIndex) % station.tracks.length];
+    radio.style.display = 'block';
+    radioName.textContent = `${station.name} · ${station.tag.toUpperCase()}`;
+    const by = document.createElement('span');
+    by.textContent = ` · ${artist}`;
+    radioTrack.replaceChildren(`♪ “${title}”`, by);
+    radioBars.forEach((bar, i) => {
+      bar.style.height = `${3 + Math.abs(Math.sin(state.time * (5.3 + i * 1.7) + i * 1.3)) * 7}px`;
+    });
+  }
+
+  /** Dee's line, fading in and out like the banner; it rides above any prompt. */
+  function updateDialogue(ui) {
+    const d = ui.dialogue;
+    if (!d || ui.screen !== 'play') {
+      dialogue.style.display = 'none';
+      return;
+    }
+    const alpha = d.t < 0.3 ? d.t / 0.3 : d.t > d.duration - 0.5 ? Math.max(0, (d.duration - d.t) / 0.5) : 1;
+    dialogue.style.display = 'block';
+    dialogue.style.opacity = `${alpha}`;
+    dialogue.style.bottom = ui.prompt ? '74px' : '22px';
+    dialogueVia.textContent = d.via;
+    dialogueText.textContent = `“${d.text}”`;
+  }
+
   // ------------------------------------------------------------ the update
 
   /** Refresh every instrument from the world state and this frame's ui object.
@@ -314,7 +470,7 @@ export function createHud() {
       meterLabel.textContent = ui.meter.label;
       meterFill.style.width = `${clamp(ui.meter.frac, 0, 1) * 100}%`;
       meterFill.style.background = ui.meter.good ? PALETTE.health : PALETTE.marker;
-      meterWrap.style.top = ui.timer !== null && ui.timer !== undefined ? '132px' : '94px';
+      meterWrap.style.top = ui.timer !== null && ui.timer !== undefined ? '156px' : '118px';
     } else {
       meterWrap.style.display = 'none';
     }
@@ -344,6 +500,11 @@ export function createHud() {
     } else {
       banner.style.display = 'none';
     }
+
+    updateStory(inGame ? ui : {});
+    updateDispatch(world, ui);
+    updateRadio(world, ui);
+    updateDialogue(ui);
 
     minimap.style.display = inGame ? 'block' : 'none';
     if (inGame) drawMinimap(world, ui, city);

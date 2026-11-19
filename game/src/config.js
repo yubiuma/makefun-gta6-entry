@@ -211,6 +211,17 @@ export const PALETTE = {
   starOff: '#565d68',
 };
 
+/** Car radio (HUD text only): station picked from the car's index, track from the clock. */
+export const RADIO = [
+  { name: 'BAY FM 101.4', tag: 'night drive', tracks: [['Neon Undertow', 'Kairo Lane'], ['Salt on the Wires', 'The Pier Lights'], ['Low Tide Lovers', 'Vesna & Co.'], ['Cannery Glow', 'Mako Reyes']] },
+  { name: 'KZRA 88.1 PULSE', tag: 'club', tracks: [['Siren Song (Club Mix)', 'DJ Halyard'], ['Redline Heart', 'Coral Static'], ['4AM in Port Market', 'Lumen Twins']] },
+  { name: 'HARBOR SOUL 94.7', tag: 'slow jams', tracks: [['Marina Rain', 'Odessa Bloom'], ['Last Ferry Home', 'The Velvet Buoys'], ["Dee, Don't Call", 'Ray Calloway']] },
+  { name: 'STATIC 77.3', tag: 'talk', tracks: [['Late Line', 'Callers on the gold car'], ['Traffic & Tides', 'Bay news desk']] },
+];
+
+/** Patrol callsigns, in the order units join the pursuit (state.cars order). */
+export const CALLSIGNS = ['ADAM-14', 'LINCOLN-4', 'MARY-7', 'KING-9', 'DAVID-3', 'NORA-6', 'TOM-2', 'EDDIE-5'];
+
 export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
 /** Where progress is kept between visits (this browser only). */

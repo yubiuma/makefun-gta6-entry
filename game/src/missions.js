@@ -1,9 +1,10 @@
 // The story: six jobs for fixer Dee Voss, then open-ended courier work. A mission is a
 // list of steps; each step has a kind (talk, enterCoupe, goto, pickup, deliver, escape,
 // pickupCousin, timedGoto, tailStart, tail, stealShowpiece, deliverShowpiece), a place in
-// the city, and the objective line the HUD shows. The state machine here watches the
-// world, advances steps, pays rewards into the world's money, and reports completions
-// so the caller can banner, save and make noise. Places are keys into city.specials.
+// the city, the objective line the HUD shows, and Dee's phone line (`dee`; a mission's
+// `outro` is her line when it pays; both are HUD text only). The state machine here
+// watches the world, advances steps, pays rewards into the world's money, and reports
+// completions so the caller can banner, save and make noise. Places are keys into city.specials.
 import { CAR, TAIL, TRAFFIC } from './config.js';
 import { heatForStars } from './wanted.js';
 import { dist } from './geom.js';
@@ -15,9 +16,10 @@ export const CHAIN = [
     title: 'Noodle Run',
     reward: 150,
     intro: 'Dee needs her coupe dropped at the Old Cannery.',
+    outro: 'Clean work. Come back when you want real money.',
     steps: [
-      { kind: 'enterCoupe', text: "Get into Dee's red coupe, parked outside" },
-      { kind: 'goto', loc: 'cannery', text: 'Drive the coupe to the Old Cannery' },
+      { kind: 'enterCoupe', text: "Get into Dee's red coupe, parked outside", dee: 'Keys are in it. Scratch my paint and you wash dishes till spring.' },
+      { kind: 'goto', loc: 'cannery', text: 'Drive the coupe to the Old Cannery', dee: 'Old Cannery, east side. Leave it by the loading door and walk.' },
     ],
   },
   {
@@ -25,9 +27,10 @@ export const CHAIN = [
     title: 'Hot Soup',
     reward: 300,
     intro: 'A package at the Cannery needs to reach Skypak Garage. It will attract attention.',
+    outro: 'Skypak says thanks. I say do it quieter next time.',
     steps: [
-      { kind: 'pickup', loc: 'cannery', text: 'Pick up the package at the Old Cannery', setStars: 2 },
-      { kind: 'deliver', loc: 'garage', text: 'Deliver the package to Skypak Garage' },
+      { kind: 'pickup', loc: 'cannery', text: 'Pick up the package at the Old Cannery', setStars: 2, dee: "The package is at the Cannery. Don't open it. Don't shake it." },
+      { kind: 'deliver', loc: 'garage', text: 'Deliver the package to Skypak Garage', dee: 'That box lit up every scanner in the bay. Skypak, now, Rook!' },
     ],
   },
   {
@@ -35,11 +38,12 @@ export const CHAIN = [
     title: 'The Last Delivery',
     reward: 650,
     intro: 'One last run: a cash duffel at Marina Stores, and every cop in Azura Bay will want it.',
+    outro: 'That was the last delivery. Probably.',
     steps: [
-      { kind: 'goto', loc: 'marina', text: 'Drive to Marina Stores' },
-      { kind: 'pickup', loc: 'marina', text: 'Grab the cash duffel', setStars: 3 },
-      { kind: 'escape', text: 'Lose the police!' },
-      { kind: 'deliver', loc: 'noodle', text: 'Bring the duffel back to Dee' },
+      { kind: 'goto', loc: 'marina', text: 'Drive to Marina Stores', dee: "Marina Stores. The duffel's behind the counter. This is the big one." },
+      { kind: 'pickup', loc: 'marina', text: 'Grab the cash duffel', setStars: 3, dee: 'Grab it and go. Every siren in Azura Bay is about to hear about it.' },
+      { kind: 'escape', text: 'Lose the police!', dee: 'Three stars! Lose them. Do NOT bring them to my door.' },
+      { kind: 'deliver', loc: 'noodle', text: 'Bring the duffel back to Dee', dee: 'Quiet now? Good. Bring my duffel home.' },
     ],
   },
   {
@@ -47,9 +51,10 @@ export const CHAIN = [
     title: 'Cousin Trouble',
     reward: 400,
     intro: "Dee's cousin Milo is stranded at Marina Stores and late for his shift at the Lumiere. Fetch him. Quickly.",
+    outro: 'He made it. My aunt owes you a dinner.',
     steps: [
-      { kind: 'pickupCousin', loc: 'marina', text: "Pick up Dee's cousin Milo at Marina Stores — bring a car" },
-      { kind: 'timedGoto', loc: 'hotel', text: 'Get Milo to Hotel Lumiere before his shift starts', timeLimit: 75 },
+      { kind: 'pickupCousin', loc: 'marina', text: "Pick up Dee's cousin Milo at Marina Stores — bring a car", dee: "Milo's at the Marina, late as always. He won't walk, so bring a car." },
+      { kind: 'timedGoto', loc: 'hotel', text: 'Get Milo to Hotel Lumiere before his shift starts', timeLimit: 75, dee: "Lumiere, seventy-five seconds. If he's fired, he moves in with me." },
     ],
   },
   {
@@ -57,9 +62,10 @@ export const CHAIN = [
     title: 'Quiet Tail',
     reward: 500,
     intro: 'A grey sedan is moving something for the Port Market crew. Follow it home, and do not be made.',
+    outro: 'The station lot. Now we know. Nice work, shadow.',
     steps: [
-      { kind: 'tailStart', loc: 'market', text: 'Get to Port Market — a grey sedan is about to roll out' },
-      { kind: 'tail', destLoc: 'station', text: 'Tail the grey sedan — stay close, never closer' },
+      { kind: 'tailStart', loc: 'market', text: 'Get to Port Market — a grey sedan is about to roll out', dee: 'A grey sedan leaves Port Market tonight. I want to know where it sleeps.' },
+      { kind: 'tail', destLoc: 'station', text: 'Tail the grey sedan — stay close, never closer', dee: "Don't ride his bumper, Rook. Port Market crews check their mirrors." },
     ],
   },
   {
@@ -67,9 +73,10 @@ export const CHAIN = [
     title: 'The Showpiece',
     reward: 1200,
     intro: 'A gold Vantara S is sitting in the bank lot and Dee has a buyer with cash. Bring it home whole.',
+    outro: "Sold. You're square with half the city, Rook.",
     steps: [
-      { kind: 'stealShowpiece', text: 'Steal the gold Vantara S from the bank lot' },
-      { kind: 'deliverShowpiece', loc: 'garage', text: 'Deliver the Vantara to Skypak Garage — keep her above 40% health', minHealth: 40 },
+      { kind: 'stealShowpiece', text: 'Steal the gold Vantara S from the bank lot', dee: 'Gold Vantara S, bank lot. The tracker wakes up the second you touch it.' },
+      { kind: 'deliverShowpiece', loc: 'garage', text: 'Deliver the Vantara to Skypak Garage — keep her above 40% health', minHealth: 40, dee: 'Skypak, and keep her pretty. My buyer pays for paint, not dents.' },
     ],
   },
 ];

@@ -13,7 +13,7 @@ import { createCity } from './city.js';
 import { createWorld, EV_BUSTED, EV_CRASH, EV_ENTER, EV_EXIT, EV_HIT, EV_PED_DOWN, EV_SHOT, EV_STEAL, EV_WASTED } from './world.js';
 import { ACTION_CONFIRM, ACTION_ENTER, ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, createInput } from './input.js';
 import { createAudio } from './audio.js';
-import { CHAIN, cousinSpot, createMissionState, hudExtras, markerFor, objectiveText, objectiveTitle, restoreMissions, updateMissions, failCurrentJob } from './missions.js';
+import { CHAIN, cousinSpot, createMissionState, currentStep, hudExtras, markerFor, objectiveText, objectiveTitle, restoreMissions, updateMissions, failCurrentJob } from './missions.js';
 import { createRenderer } from './render3d.js';
 import { SCREEN_BUSTED, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WASTED } from './screens.js';
 import { createHud } from './hud.js';
@@ -66,6 +66,17 @@ function persist() {
   }
 }
 
+/** Story progress for the HUD's pips and courier rep. */
+function storyFor(ms) {
+  return { done: ms.chainIndex, total: CHAIN.length, active: ms.active, sideJobs: ms.sideJobsDone };
+}
+
+/** Dee's line for the story step now running, if it has one. */
+function deeLine(ms) {
+  const step = ms.active ? currentStep(ms) : null;
+  return step?.dee ?? null;
+}
+
 function saveSummary(save) {
   const story = save.chainIndex >= CHAIN.length ? 'story complete' : `mission ${save.chainIndex + 1} of ${CHAIN.length}`;
   return `$${save.money.toLocaleString('en-US')} · ${story}`;
@@ -93,6 +104,9 @@ function runShot(name) {
     saveExists: false,
     saveSummary: '',
     fine: 0,
+    story: scene.screen === SCREEN_TITLE ? null : storyFor(missions),
+    dialogue: scene.screen === SCREEN_TITLE ? null : scene.dialogue ?? null,
+    air: scene.air ?? null,
   };
   let painted = 0;
   function paint() {
@@ -112,6 +126,8 @@ function runGame() {
   let screen = SCREEN_TITLE;
   let save = loadSave();
   let banner = null;
+  let dialogue = null;
+  let lastStepKey = '';
   let fine = 0;
   let accumulator = 0;
   let last = performance.now();
@@ -126,6 +142,10 @@ function runGame() {
     banner = { title, sub, t: 0, duration };
   }
 
+  function say(text, via = 'ON THE PHONE') {
+    dialogue = { text, via, t: 0, duration: Math.max(4.5, 2 + text.length * 0.06) };
+  }
+
   function startRun(fresh) {
     world.reset();
     if (fresh) {
@@ -136,6 +156,8 @@ function runGame() {
       restoreMissions(missions, save);
     }
     world.state.attract = false;
+    dialogue = null;
+    lastStepKey = '';
     screen = SCREEN_PLAY;
     showBanner('AZURA BAY', objectiveText(missions), 3);
     announce('Playing. ' + objectiveText(missions));
@@ -193,8 +215,18 @@ function runGame() {
       audio.pickup();
       announce('Package picked up.');
     }
+    // Dee calls as each story step begins (in person when the mission starts at her
+    // door), and once more when a mission pays out.
+    const stepKey = missions.active ? `${missions.chainIndex}:${missions.stepIndex}` : '';
+    if (stepKey !== lastStepKey) {
+      lastStepKey = stepKey;
+      const line = deeLine(missions);
+      if (line) say(line, missions.justStarted ? 'IN PERSON' : 'ON THE PHONE');
+    }
     if (missions.justCompleted) {
       const done = missions.justCompleted;
+      const outro = CHAIN.find((m) => m.title === done.title)?.outro;
+      if (outro) say(outro);
       showBanner('JOB COMPLETE', `${done.title} — +$${done.reward}`);
       audio.success();
       persist();
@@ -245,6 +277,9 @@ function runGame() {
       saveExists: save !== null,
       saveSummary: save ? saveSummary(save) : '',
       fine,
+      story: screen === SCREEN_TITLE ? null : storyFor(missions),
+      dialogue,
+      air: null,
     };
   }
 
@@ -330,6 +365,10 @@ function runGame() {
     if (banner) {
       banner.t += 1 / 60; // frames arrive at the display's rate; close enough for a fade
       if (banner.t >= banner.duration) banner = null;
+    }
+    if (dialogue && screen === SCREEN_PLAY) {
+      dialogue.t += 1 / 60;
+      if (dialogue.t >= dialogue.duration) dialogue = null;
     }
 
     // The loops under the game: sirens follow the stars, the engine follows the car.
