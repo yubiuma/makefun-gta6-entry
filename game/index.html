@@ -47,11 +47,11 @@
   #dispatch { display: none; margin: 8px 0 0 auto; width: 256px; background: rgba(10, 13, 22, 0.86); border: 1px solid rgba(90, 130, 255, 0.45); border-radius: 8px; padding: 6px 10px 7px; text-align: left; font-variant-numeric: tabular-nums; }
   #dispatch-head { display: flex; justify-content: space-between; font-size: 10.5px; font-weight: 800; letter-spacing: 1.1px; color: #8fb0ff; margin-bottom: 3px; }
   #dispatch-head b { color: #ff5d5d; }
-  .unit { display: grid; grid-template-columns: 11px 76px 1fr 46px; align-items: center; font-size: 12px; font-weight: 700; line-height: 1.6; }
-  .unit i { width: 7px; height: 7px; border-radius: 50%; }
-  .unit .role { color: #b9bdc7; font-size: 10.5px; letter-spacing: 0.6px; }
-  .unit .role.hot { color: #ff7b7b; }
-  .unit .dist { text-align: right; color: #9aa3b5; }
+  .unit-row { display: grid; grid-template-columns: 11px 76px 1fr 46px; align-items: center; font-size: 12px; font-weight: 700; line-height: 1.6; }
+  .unit-row i { width: 7px; height: 7px; border-radius: 50%; }
+  .unit-row .role { color: #b9bdc7; font-size: 10.5px; letter-spacing: 0.6px; }
+  .unit-row .role.hot { color: #ff7b7b; }
+  .unit-row .dist { text-align: right; color: #9aa3b5; }
 
   #radio { position: absolute; right: 16px; bottom: 88px; display: none; text-align: right; background: rgba(10, 13, 22, 0.72); border-radius: 8px; padding: 5px 10px 6px; text-shadow: 0 1px 4px rgba(0,0,0,0.9); }
   #radio-station { font-size: 11px; font-weight: 800; letter-spacing: 1.2px; color: #7fe3ff; }
@@ -72,7 +72,7 @@
   #meter-bar { height: 11px; }
   #minimap { position: absolute; left: 14px; bottom: 14px; border-radius: 10px; display: none; }
 
-  #speed { position: absolute; right: 22px; bottom: 20px; display: none; text-align: right; white-space: nowrap; text-shadow: 0 2px 6px rgba(0,0,0,0.85); }
+  #speed { position: absolute; right: 22px; bottom: 20px; display: none; text-align: right; text-shadow: 0 2px 6px rgba(0,0,0,0.85); }
   #speed-num { font-size: 26px; font-weight: 800; }
   #speed .unit { font-size: 13px; font-weight: 600; color: #b9bdc7; margin-left: 5px; }
 

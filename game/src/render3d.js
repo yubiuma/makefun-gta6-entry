@@ -478,10 +478,16 @@ export function createRenderer(canvas, city) {
   // Car bodies: one pooled group per car the world can field.
   const bodyMats = new Map();
   const bodyMat = (hex) => {
-    if (!bodyMats.has(hex)) bodyMats.set(hex, new THREE.MeshLambertMaterial({ color: shade(hex, 0.92) }));
+    if (!bodyMats.has(hex)) bodyMats.set(hex, new THREE.MeshLambertMaterial({ color: shade(hex, 0.92), emissive: shade(hex, 0.1) }));
     return bodyMats.get(hex);
   };
-  const glassMat = new THREE.MeshLambertMaterial({ color: 0x2a3a55, transparent: true, opacity: 0.62 });
+  // Cabins are opaque paint a shade darker than the body, wrapped in a dark glass band.
+  const cabinMats = new Map();
+  const cabinMat = (hex) => {
+    if (!cabinMats.has(hex)) cabinMats.set(hex, new THREE.MeshLambertMaterial({ color: shade(hex, 0.7), emissive: shade(hex, 0.07) }));
+    return cabinMats.get(hex);
+  };
+  const glassMat = new THREE.MeshLambertMaterial({ color: 0x1b2638, emissive: 0x0d1626 });
   const trimMat = new THREE.MeshLambertMaterial({ color: 0x1d2026 });
   const goldMat = new THREE.MeshLambertMaterial({ color: 0xd9a83c, emissive: 0x694d10, emissiveIntensity: 0.6 });
   // Police lights: lit and dark lenses (each cruiser picks per frame, so a column
@@ -505,7 +511,26 @@ export function createRenderer(canvas, city) {
   });
 
   const bodyGeo = new THREE.BoxGeometry(46, 10, 22);
-  const cabinGeo = new THREE.BoxGeometry(23, 8.5, 19.5);
+  const cabinGeo = new THREE.BoxGeometry(1, 1, 1); // scaled per silhouette
+  const bandGeo = new THREE.BoxGeometry(1, 1, 1);
+  const railGeo = new THREE.BoxGeometry(18, 3, 1.6);
+  const bedGeo = new THREE.BoxGeometry(18, 1.2, 18.6);
+  // Silhouettes, in car-local units (x forward): body height, then the cabin's
+  // length/height/width and centre, the glass band's height and centre.
+  const SHAPES = {
+    sedan: { body: 10, cab: [23, 8.5, 19.5, -1.5, 18], band: [4.2, 18.6] },
+    coupe: { body: 9, cab: [19, 6.6, 19, -3.5, 16.3], band: [3.6, 16.7] },
+    van: { body: 10, cab: [37, 13.5, 20.6, -4, 20.7], band: [4.6, 22.4] },
+    pickup: { body: 10, cab: [15, 9, 19.5, 7, 18.5], band: [4.4, 19.2] },
+  };
+  const CIVILIAN_SHAPES = ['sedan', 'van', 'sedan', 'pickup', 'coupe'];
+  function shapeFor(car, i, state) {
+    if (car.kind === 'showpiece' || car === state.coupe) return 'coupe';
+    if (car.kind === 'police' || car.kind === 'target') return 'sedan';
+    // First sight fixes it: indices shift when cars leave, a car's shape must not.
+    car._shape ??= CIVILIAN_SHAPES[((i + 1) * 2654435761 >>> 0) % CIVILIAN_SHAPES.length];
+    return car._shape;
+  }
   const stripeGeo = new THREE.BoxGeometry(46.4, 3.6, 22.4);
   const barBaseGeo = new THREE.BoxGeometry(13, 2.6, 20);
   const barLightGeo = new THREE.BoxGeometry(11, 3, 7.5);
@@ -520,7 +545,15 @@ export function createRenderer(canvas, city) {
     const body = new THREE.Mesh(bodyGeo, trimMat);
     body.position.y = 9;
     const cabin = new THREE.Mesh(cabinGeo, glassMat);
-    cabin.position.set(-1.5, 18, 0);
+    const band = new THREE.Mesh(bandGeo, glassMat);
+    const bed = new THREE.Group();
+    const bedFloor = new THREE.Mesh(bedGeo, trimMat);
+    bedFloor.position.set(-13, 14.2, 0);
+    const railL = new THREE.Mesh(railGeo, trimMat);
+    railL.position.set(-13, 15.5, -10.2);
+    const railR = new THREE.Mesh(railGeo, trimMat);
+    railR.position.set(-13, 15.5, 10.2);
+    bed.add(bedFloor, railL, railR);
     const stripe = new THREE.Mesh(stripeGeo, trimMat);
     stripe.position.y = 6.2;
     stripe.visible = false;
@@ -547,10 +580,10 @@ export function createRenderer(canvas, city) {
     const patch = new THREE.Mesh(patchGeo, patchMat);
     patch.position.set(74, 0.14, 0);
     patch.renderOrder = 2;
-    group.add(body, cabin, stripe, police, patch);
+    group.add(body, cabin, band, bed, stripe, police, patch);
     group.visible = false;
     scene.add(group);
-    return { group, body, cabin, stripe, police, barRed, barBlue, bloomR, bloomB, wash, patch };
+    return { group, body, cabin, band, bed, railL, railR, shape: '', stripe, police, barRed, barBlue, bloomR, bloomB, wash, patch };
   }
   const carMeshes = [];
   for (let i = 0; i < MAX_CARS; i += 1) carMeshes.push(makeCarMesh());
@@ -591,12 +624,6 @@ export function createRenderer(canvas, city) {
   miloMesh.add(miloLabel);
   miloLabel.position.y = 40;
   scene.add(miloMesh);
-  // Heads that ride inside the player's car: Rook driving, Milo alongside.
-  const driverHead = new THREE.Mesh(personHeadGeo, skinMat);
-  const passengerHead = new THREE.Mesh(personHeadGeo, skinMat);
-  driverHead.visible = false;
-  passengerHead.visible = false;
-  scene.add(driverHead, passengerHead);
 
   // Bullets and particles, instanced from the simulation's own pools.
   const bulletMesh = new THREE.InstancedMesh(
@@ -757,7 +784,22 @@ export function createRenderer(canvas, city) {
       mesh.body.material = car.kind === 'showpiece' ? goldMat : isPolice ? policeBlack : bodyMat(car.color);
       mesh.stripe.visible = false;
       mesh.police.visible = isPolice;
-      mesh.cabin.material = isPolice ? policeWhite : glassMat;
+      const shapeName = shapeFor(car, i, state);
+      if (mesh.shape !== shapeName) {
+        mesh.shape = shapeName;
+        const sh = SHAPES[shapeName];
+        mesh.body.scale.y = sh.body / 10;
+        mesh.body.position.y = 4 + sh.body / 2;
+        const [cl, ch, cw, cx, cy] = sh.cab;
+        mesh.cabin.scale.set(cl, ch, cw);
+        mesh.cabin.position.set(cx, cy, 0);
+        mesh.band.scale.set(cl + 0.6, sh.band[0], cw + 0.6);
+        mesh.band.position.set(cx, sh.band[1], 0);
+        mesh.bed.visible = shapeName === 'pickup';
+      }
+      const paint = car.kind === 'showpiece' ? '#e6b93d' : car.color;
+      mesh.cabin.material = isPolice ? policeWhite : cabinMat(paint);
+      mesh.railL.material = mesh.railR.material = bodyMat(paint);
       if (isPolice) {
         // Each cruiser strobes on its own beat (offset by its index): a double
         // red flash, then a double blue, the way real bars cycle.
@@ -873,22 +915,11 @@ export function createRenderer(canvas, city) {
     } else {
       miloMesh.visible = false;
     }
-    // The player: a body on foot, two heads in a car.
+    // The player: a body on foot; in a car, hidden behind the cabin glass.
     const player = state.player;
     if (player.inCar && player.car) {
       playerMesh.visible = false;
-      const car = player.car;
-      const fx = Math.cos(car.angle);
-      const fy = Math.sin(car.angle);
-      const sx = -fy;
-      const sy = fx;
-      driverHead.visible = true;
-      driverHead.position.set(car.x + fx * -4 + sx * -5, 18.6, car.y + fy * -4 + sy * -5);
-      passengerHead.visible = Boolean(ui.passenger);
-      passengerHead.position.set(car.x + fx * -4 + sx * 5, 18.6, car.y + fy * -4 + sy * 5);
     } else {
-      driverHead.visible = false;
-      passengerHead.visible = false;
       playerMesh.visible = true;
       playerMesh.position.set(player.x, 0, player.y);
       playerMesh.rotation.y = -player.angle;

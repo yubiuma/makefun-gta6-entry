@@ -361,7 +361,7 @@ export function createHud() {
       d: Math.hypot(car.x - player.x, car.y - player.y),
     }));
     units.sort((a, b) => a.d - b.d);
-    const row = (dot, call, role, hot, d) => `<div class="unit"><i style="background:${dot}"></i><span>${call}</span>`
+    const row = (dot, call, role, hot, d) => `<div class="unit-row"><i style="background:${dot}"></i><span>${call}</span>`
       + `<span class="role${hot ? ' hot' : ''}">${role}</span><span class="dist">${d}</span></div>`;
     const rows = units.slice(0, 5).map((u) => {
       const red = Math.floor(state.time * 3.75 + u.n) % 2 === 0;
