@@ -1,4 +1,4 @@
-// The story: six jobs for fixer Dee Voss, then open-ended courier work. A mission is a
+// The story: nine jobs for fixer Dee Voss, then open-ended courier work. A mission is a
 // list of steps; each step has a kind (talk, enterCoupe, goto, pickup, deliver, escape,
 // pickupCousin, timedGoto, tailStart, tail, stealShowpiece, deliverShowpiece), a place in
 // the city, the objective line the HUD shows, and Dee's phone line (`dee`; a mission's
@@ -73,10 +73,45 @@ export const CHAIN = [
     title: 'The Showpiece',
     reward: 1200,
     intro: 'A gold Vantara S is sitting in the bank lot and Dee has a buyer with cash. Bring it home whole.',
-    outro: "Sold. You're square with half the city, Rook.",
+    outro: 'Sold. Half the city owes you now. The other half runs Port Market.',
     steps: [
       { kind: 'stealShowpiece', text: 'Steal the gold Vantara S from the bank lot', dee: 'Gold Vantara S, bank lot. The tracker wakes up the second you touch it.' },
       { kind: 'deliverShowpiece', loc: 'garage', text: 'Deliver the Vantara to Skypak Garage — keep her above 40% health', minHealth: 40, dee: 'Skypak, and keep her pretty. My buyer pays for paint, not dents.' },
+    ],
+  },
+  {
+    id: 'market-squeeze',
+    title: 'Market Squeeze',
+    reward: 900,
+    intro: "The Port Market crew keeps its ledger in the back office. Take it, shake four stars, and drop it at the Old Cannery.",
+    outro: "Their whole book, in my freezer. Port Market won't sleep tonight.",
+    steps: [
+      { kind: 'pickup', loc: 'market', text: 'Lift the ledger from the Port Market back office', setStars: 4, dee: 'In and out of Port Market. The crew calls the cops on thieves. Funny, right?' },
+      { kind: 'escape', text: 'Four stars — lose them!', dee: 'Four stars, Rook! Use the side streets. Skypak can buy you a star.' },
+      { kind: 'deliver', loc: 'cannery', text: 'Drop the ledger at the Old Cannery', dee: "Clear? Good. Cannery freezer, third shelf. Don't read it." },
+    ],
+  },
+  {
+    id: 'night-shift',
+    title: 'Night Shift',
+    reward: 600,
+    intro: 'Milo traded the Lumiere for night shifts at St Marina Hospital. He is stuck at Marina Stores again, and late again.',
+    outro: 'A porter with a getaway driver. My aunt is so proud.',
+    steps: [
+      { kind: 'pickupCousin', loc: 'marina', text: 'Pick up Milo at Marina Stores — bring a car', dee: "Milo again. Marina Stores. I'm buying that boy a bicycle." },
+      { kind: 'timedGoto', loc: 'hospital', text: 'Get Milo to St Marina Hospital before his shift', timeLimit: 80, dee: 'St Marina, eighty seconds. The night nurse does not forgive.' },
+    ],
+  },
+  {
+    id: 'bank-holiday',
+    title: 'Bank Holiday',
+    reward: 1500,
+    intro: "Dee's last favour: a deposit box at Azura Bank that half the city is watching. Get it to Rook's Place.",
+    outro: "Debts paid, Rook. Azura Bay is yours. Come eat, it's on me.",
+    steps: [
+      { kind: 'goto', loc: 'bank', text: 'Drive to Azura Bank', dee: "Last one, I swear. Azura Bank. Box 1404. They know you're coming." },
+      { kind: 'pickup', loc: 'bank', text: 'Take box 1404 from the bank', setStars: 3, dee: 'Alarms. Of course alarms. Go, go!' },
+      { kind: 'deliver', loc: 'safehouse', text: "Get the box home to Rook's Place", dee: "Your place, right by mine. Lose them or don't. Just get there." },
     ],
   },
 ];

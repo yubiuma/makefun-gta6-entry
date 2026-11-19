@@ -24,12 +24,13 @@ patrol cars down on you until you break their line of sight and let things
 cool off. On foot the camera stays close over your shoulder; put your foot
 down in a car and it pulls back and leans into the speed.
 
-A six-mission story chain for Dee carries you from a first nervous pickup
+A nine-mission story chain for Dee carries you from a first nervous pickup
 through a package run that draws every cop in the city, a timed dash to get
 Dee's stranded cousin to his shift at the Hotel Lumiere, a quiet tail across
-town — close enough to watch, never close enough to be made — and one last
-score: a gold Vantara S lifted from the bank lot and delivered whole, with
-the whole force on your tail. Finish the story and the work never really
+town — close enough to watch, never close enough to be made — a gold
+Vantara S lifted from the bank lot and delivered whole, a four-star raid on
+the Port Market crew's ledger, Milo's night shift at St Marina, and one last
+deposit box out of Azura Bank. Finish the story and the work never really
 ends: courier jobs keep generating for as long as you care to run them.
 
 When the driving gets expensive, Skypak Garage earns its keep: roll into the

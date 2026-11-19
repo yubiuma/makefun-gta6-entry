@@ -53,10 +53,10 @@ function loadSave() {
 function persist() {
   try {
     window.localStorage.setItem(SAVE_KEY, JSON.stringify({
-      // Version 2: the six-mission story. Version 1 saves (three missions) still load:
-      // they carry the same money/chainIndex/sideJobsDone fields, and restoreMissions
-      // defaults anything a save does not have.
-      version: 2,
+      // Version 3: the nine-mission story. v1 (three missions) and v2 (six) saves carry the
+      // same fields and still load. Deliberately, a v2 save that finished the story
+      // (chainIndex 6) is not clamped: it resumes at mission 7, so the new jobs are playable.
+      version: 3,
       money: world.state.money,
       chainIndex: missions.chainIndex,
       sideJobsDone: missions.sideJobsDone,
