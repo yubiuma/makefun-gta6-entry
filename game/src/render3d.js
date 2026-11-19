@@ -13,6 +13,7 @@ import { CITY, GARAGE, PALETTE } from './config.js';
 import { hash2 } from './geom.js';
 import { blockRect, streetCenterX, streetCenterY } from './city.js';
 import { SCREEN_TITLE } from './screens.js';
+import { airUnit } from './air.js';
 
 const SKY = 0x0a0e1c;
 const FOG_COLOR = 0x0a0e1c;
@@ -625,6 +626,85 @@ export function createRenderer(canvas, city) {
   miloLabel.position.y = 40;
   scene.add(miloMesh);
 
+  // AIR-1 (see air.js): fuselage, boom, skids, a spinning rotor over a faint blur
+  // disc, nav lights, and a searchlight cone ending in a pool of light on the street.
+  const heli = new THREE.Group();
+  const heliBody = new THREE.MeshLambertMaterial({ color: 0x34405e, emissive: 0x262f48 });
+  const heliStripe = new THREE.MeshLambertMaterial({ color: 0xe9edf2, emissive: 0x6a7080 });
+  const heliBox = (w, h, d, mat, x, y, z) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    heli.add(m);
+    return m;
+  };
+  heliBox(30, 12, 14, heliBody, 0, 0, 0);
+  heliBox(30.4, 3, 14.4, heliStripe, -1, -1.5, 0);
+  heliBox(9, 7.5, 12, glassMat, 15, 1.2, 0);
+  heliBox(34, 3.2, 3.2, heliBody, -30, 2.5, 0);
+  heliBox(6, 9, 1.2, heliBody, -46, 6.5, 0);
+  heliBox(28, 1.2, 1.4, trimMat, 1, -9, -7);
+  heliBox(28, 1.2, 1.4, trimMat, 1, -9, 7);
+  const rotor = new THREE.Group();
+  const bladeGeo = new THREE.BoxGeometry(84, 0.6, 3.4);
+  rotor.add(new THREE.Mesh(bladeGeo, trimMat), new THREE.Mesh(bladeGeo, trimMat));
+  rotor.children[1].rotation.y = Math.PI / 2;
+  rotor.position.set(0, 8.2, 0);
+  const blurDisc = new THREE.Mesh(new THREE.CircleGeometry(42, 28), new THREE.MeshBasicMaterial({
+    color: 0x9aa6c0, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide,
+  }));
+  blurDisc.rotation.x = -Math.PI / 2;
+  blurDisc.position.y = 8;
+  heli.add(rotor, blurDisc);
+  const navRed = new THREE.Sprite(new THREE.SpriteMaterial(additive(0xff3030, 1)));
+  navRed.position.set(0, -2, -8);
+  const navGreen = new THREE.Sprite(new THREE.SpriteMaterial(additive(0x30ff70, 1)));
+  navGreen.position.set(0, -2, 8);
+  const strobe = new THREE.Sprite(new THREE.SpriteMaterial(additive(0xffffff, 1)));
+  strobe.position.set(-46, 11, 0);
+  const lamp = new THREE.Sprite(new THREE.SpriteMaterial(additive(0xeef4ff, 1)));
+  lamp.position.set(10, -8, 0);
+  lamp.scale.setScalar(30);
+  heli.add(navRed, navGreen, strobe, lamp);
+  heli.scale.setScalar(1.35);
+  heli.visible = false;
+  scene.add(heli);
+  const airBeamGeo = new THREE.CylinderGeometry(2.5, 30, 1, 20, 1, true);
+  airBeamGeo.translate(0, -0.5, 0); // apex at the origin, hanging down one unit
+  const airBeam = new THREE.Mesh(airBeamGeo, new THREE.MeshBasicMaterial({
+    color: 0xcfe0ff, transparent: true, opacity: 0.13, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  }));
+  airBeam.renderOrder = 5;
+  const airSpotGeo = new THREE.PlaneGeometry(1, 1);
+  airSpotGeo.rotateX(-Math.PI / 2);
+  const airSpot = new THREE.Mesh(airSpotGeo, new THREE.MeshBasicMaterial(additive(0xdfeaff, 0.75)));
+  airSpot.renderOrder = 3;
+  airBeam.visible = false;
+  airSpot.visible = false;
+  scene.add(airBeam, airSpot);
+  const airBeamDir = new THREE.Vector3();
+  const DOWN = new THREE.Vector3(0, -1, 0);
+
+  function syncAir(state, time) {
+    const air = state.attract ? null : airUnit(state);
+    heli.visible = airBeam.visible = airSpot.visible = Boolean(air);
+    if (!air) return;
+    heli.position.set(air.x, air.alt, air.y);
+    heli.rotation.set(0, -air.angle, 0);
+    heli.rotateZ(-0.12); // nose down, the way a pursuing heli hangs
+    rotor.rotation.y = air.rotor;
+    navRed.scale.setScalar(Math.floor(time * 2) % 2 === 0 ? 14 : 5);
+    navGreen.scale.setScalar(Math.floor(time * 2) % 2 === 0 ? 14 : 5);
+    strobe.scale.setScalar(Math.floor(time * 6) % 6 === 0 ? 26 : 0.01);
+    // The cone hangs from the heli's belly to the pool of light on the street.
+    airBeam.position.set(air.x, air.alt - 9, air.y);
+    airBeamDir.set(air.lightX - air.x, -(air.alt - 9), air.lightY - air.y);
+    const len = airBeamDir.length();
+    airBeam.quaternion.setFromUnitVectors(DOWN, airBeamDir.normalize());
+    airBeam.scale.set(1, len, 1);
+    airSpot.position.set(air.lightX, 0.3, air.lightY);
+    airSpot.scale.set(76, 1, 76);
+  }
+
   // Bullets and particles, instanced from the simulation's own pools.
   const bulletMesh = new THREE.InstancedMesh(
     new THREE.BoxGeometry(17, 1.7, 1.7),
@@ -1026,6 +1106,7 @@ export function createRenderer(canvas, city) {
     syncCars(state, state.time);
     syncPeople(state, ui, state.time);
     syncEffects(state, ui, state.time);
+    syncAir(state, state.time);
     placeCamera(world, ui, dt);
     renderer.render(scene, camera);
   }

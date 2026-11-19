@@ -5,6 +5,7 @@
 // stayed familiar on purpose.
 import { CALLSIGNS, CAR, CITY, PALETTE, PLAYER, RADIO } from './config.js';
 import { angleDiff, clamp } from './geom.js';
+import { airUnit } from './air.js';
 
 const MINIMAP_SIZE = 196;
 
@@ -367,7 +368,8 @@ export function createHud() {
       const red = Math.floor(state.time * 3.75 + u.n) % 2 === 0;
       return row(red ? PALETTE.lightRed : PALETTE.lightBlue, u.call, u.role[0], u.role[1], `${Math.round(u.d / 10)}m`);
     });
-    if (ui.air) rows.push(row('#e8f0ff', 'AIR-1', 'SEARCHLIGHT ON', true, `${Math.round(ui.air.d / 10)}m`));
+    const air = airUnit(state);
+    if (air) rows.push(row(Math.floor(state.time * 6) % 2 ? '#e8f0ff' : '#7f8aa0', 'AIR-1', 'SEARCHLIGHT ON', true, `${Math.round(air.d / 10)}m`));
     if (rows.length === 0) rows.push(row('transparent', 'ALL UNITS', 'BOLO · SEARCHING', false, ''));
     dispatchRows.innerHTML = rows.join('');
     dispatch.style.display = 'block';

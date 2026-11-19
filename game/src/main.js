@@ -106,7 +106,6 @@ function runShot(name) {
     fine: 0,
     story: scene.screen === SCREEN_TITLE ? null : storyFor(missions),
     dialogue: scene.screen === SCREEN_TITLE ? null : scene.dialogue ?? null,
-    air: scene.air ?? null,
   };
   let painted = 0;
   function paint() {
@@ -279,7 +278,6 @@ function runGame() {
       fine,
       story: screen === SCREEN_TITLE ? null : storyFor(missions),
       dialogue,
-      air: null,
     };
   }
 
