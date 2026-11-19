@@ -9,11 +9,18 @@
 import { STEP, TRAFFIC } from './config.js';
 import { streetCenterY } from './city.js';
 import { heatForStars } from './wanted.js';
-import { updateMissions } from './missions.js';
+import { CHAIN, updateMissions } from './missions.js';
 import { SCREEN_PLAY, SCREEN_TITLE } from './screens.js';
 
 const IDLE = { moveX: 0, moveY: 0, aimX: null, aimY: null, firing: false, sprint: false, enter: false };
 const DRIVING = { moveX: 0, moveY: -1, aimX: null, aimY: null, firing: false, sprint: false, enter: false };
+
+/** Cash on hand in a staged scene: every story reward paid out before `chainIndex`,
+ *  plus Rook's pocket money, so the HUD shows what a real run would have earned. */
+const POCKET = 40;
+function earnedBefore(chainIndex) {
+  return POCKET + CHAIN.slice(0, chainIndex).reduce((sum, mission) => sum + mission.reward, 0);
+}
 
 function stepFor(world, seconds, ctrl) {
   const steps = Math.round(seconds / STEP);
@@ -69,8 +76,8 @@ function stageStart(world, city) {
     screen: SCREEN_TITLE,
     camera: {
       mode: 'fixed',
-      x: noodle.x + 128, y: noodle.y + 238, height: 64,
-      lookX: noodle.x - 8, lookY: noodle.y - 14, lookHeight: 24,
+      x: noodle.x + 144, y: noodle.y + 190, height: 74,
+      lookX: noodle.x - 150, lookY: noodle.y - 30, lookHeight: 24,
     },
   };
 }
@@ -96,7 +103,6 @@ function stageDrive(world, missions, city) {
   placePeds(world, [
     [1050, noodle.y - 7],
     [1230, noodle.y + 95],
-    [860, noodle.y - 7],
   ], 5);
   world.putPlayerInCar(coupe);
   updateMissions(missions, world, city); // the enterCoupe step completes, as in play
@@ -104,6 +110,12 @@ function stageDrive(world, missions, city) {
   // A wandering pedestrian can step into the road during the staged roll and
   // leave the frame at two stars; the composed shot is a clean errand run.
   world.setHeat(0);
+  // Anyone strolling between the chase camera and the coupe would fill the
+  // foreground; send them up the street, where they read as city life instead.
+  for (const ped of world.state.peds) {
+    if (ped.x > coupe.x - 260 && ped.x < coupe.x + 10 && Math.abs(ped.y - laneY) < 140) ped.x += 640;
+  }
+  world.state.money = earnedBefore(0);
   return { screen: SCREEN_PLAY, camera: null };
 }
 
@@ -129,7 +141,7 @@ function stageChase(world, missions) {
   world.addPoliceAt(948, laneY - 50, 0.05, 306); // left flank
   world.addPoliceAt(952, laneY + 50, -0.05, 303); // right flank
   world.addPoliceAt(1158, laneY - 8, 0.3, 290); // cutting in ahead
-  world.addPoliceAt(892, laneY + 14, -0.03, 324); // on the bumper
+  world.addPoliceAt(860, laneY + 14, -0.03, 318); // on the bumper, a length back
   // Civilian traffic fleeing ahead and coming the other way; neighbours watching.
   const traffic = world.state.cars.filter((car) => car.kind === 'traffic');
   stageTraffic(traffic[0], 1420, laneY, 1, 265, 5, 6);
@@ -142,9 +154,10 @@ function stageChase(world, missions) {
   stepFor(world, 0.22, DRIVING);
   // Contact during the staged chase bumps the heat; pin the frame at exactly three stars.
   world.setHeat(heatForStars(3));
+  world.state.money = earnedBefore(1);
   return {
     screen: SCREEN_PLAY,
-    camera: { dist: 160, height: 72, lookAhead: 40 },
+    camera: { dist: 160, height: 90, lookAhead: 40 },
   };
 }
 
@@ -195,6 +208,7 @@ function stageMission(world, missions, city) {
     world.step(STEP, { ...DRIVING, moveY });
   }
   missions.tail.meter = 0.65; // the meter where a good shadow keeps it
+  world.state.money = earnedBefore(4);
   return {
     screen: SCREEN_PLAY,
     camera: { dist: 148, height: 70, lookAhead: 130 },

@@ -14,7 +14,7 @@ const SPECIALS = [
   { key: 'noodle', name: 'VOSS NOODLE BAR', col: 3, row: 3, roof: '#d94f3d' },
   { key: 'safehouse', name: "ROOK'S PLACE", col: 3, row: 4, roof: '#7d8ca3' },
   { key: 'cannery', name: 'OLD CANNERY', col: 6, row: 1, roof: '#8a6f4d' },
-  { key: 'garage', name: 'SKYPARK GARAGE', col: 1, row: 6, roof: '#5f8a8b' },
+  { key: 'garage', name: 'SKYPAK GARAGE', col: 1, row: 6, roof: '#5f8a8b' },
   { key: 'marina', name: 'MARINA STORES', col: 7, row: 3, roof: '#4a7fa5' },
   { key: 'bank', name: 'AZURA BANK', col: 4, row: 2, roof: '#c2a15c' },
   { key: 'hotel', name: 'HOTEL LUMIERE', col: 2, row: 5, roof: '#8a6f9e' },

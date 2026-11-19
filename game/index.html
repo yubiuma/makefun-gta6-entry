@@ -58,13 +58,16 @@
   #arrow-dist { position: absolute; left: -20px; top: 12px; width: 40px; text-align: center; font-size: 13px; font-weight: 700; color: #ffc93e; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
 
   .screen { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; }
-  #title-screen { background: linear-gradient(180deg, rgba(12,14,20,0.62) 0%, rgba(12,14,20,0.18) 45%, rgba(12,14,20,0.66) 100%); text-align: center; padding-top: 7vh; }
-  #game-title { font-size: 96px; font-weight: 800; letter-spacing: 6px; color: #ffffff; text-shadow: 0 4px 30px rgba(0,0,0,0.9); line-height: 1; }
-  #game-subtitle { font-size: 40px; font-weight: 800; color: #ffc93e; margin-top: 8px; text-shadow: 0 3px 18px rgba(0,0,0,0.9); }
-  #title-story { font-size: 19px; line-height: 1.5; margin-top: 34px; text-shadow: 0 2px 8px rgba(0,0,0,0.95); }
-  #title-start { font-size: 21px; font-weight: 700; color: #ffc93e; margin-top: 42px; text-shadow: 0 2px 8px rgba(0,0,0,0.95); }
+  #title-screen { background: linear-gradient(90deg, rgba(8,10,18,0.94) 0%, rgba(8,10,18,0.82) 34%, rgba(8,10,18,0.25) 56%, rgba(8,10,18,0) 70%); align-items: flex-start; text-align: left; padding: 7vh 0 0 5.5vw; box-sizing: border-box; }
+  #game-title { font-size: 92px; font-weight: 800; letter-spacing: 5px; color: #ffffff; text-shadow: 0 4px 30px rgba(0,0,0,0.9); line-height: 1; }
+  #game-subtitle { font-size: 36px; font-weight: 800; color: #ffc93e; margin-top: 8px; letter-spacing: 3px; text-shadow: 0 3px 18px rgba(0,0,0,0.9); }
+  #title-story { font-size: 18px; line-height: 1.55; margin-top: 26px; max-width: 520px; color: #e8e6de; text-shadow: 0 2px 8px rgba(0,0,0,0.95); }
+  #title-features { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; max-width: 560px; }
+  #title-features span { font-size: 12.5px; font-weight: 800; letter-spacing: 1px; color: #0d1018; background: #ffc93e; border-radius: 4px; padding: 4px 9px; }
+  #title-features span.alt { background: rgba(255,255,255,0.08); color: #f4f2ea; border: 1px solid rgba(255,255,255,0.28); }
+  #title-start { font-size: 21px; font-weight: 700; color: #ffc93e; margin-top: 30px; text-shadow: 0 2px 8px rgba(0,0,0,0.95); }
   #save-line { font-size: 21px; font-weight: 700; margin-top: 10px; display: none; text-shadow: 0 2px 8px rgba(0,0,0,0.95); }
-  #title-controls { font-size: 16px; color: #d7dae0; line-height: 1.65; margin-top: 40px; text-shadow: 0 2px 8px rgba(0,0,0,0.95); }
+  #title-controls { font-size: 14.5px; color: #c9ccd4; line-height: 1.7; margin-top: 26px; text-shadow: 0 2px 8px rgba(0,0,0,0.95); }
   #mute-line { font-size: 16px; color: #ff5d5d; margin-top: 12px; display: none; }
 
   #panel-screen { justify-content: center; background: rgba(10, 12, 16, 0.45); }
@@ -133,9 +136,13 @@
     <div id="game-title">AZURA BAY</div>
     <div id="game-subtitle">— NIGHT RUN —</div>
     <div id="title-story">
-      Rook owes money all over Azura Bay. Dee Voss, fixer and noodle chef,<br>
-      has work: six jobs, one dented coupe, and every cop in the city.<br>
+      Rook owes money all over Azura Bay. Dee Voss, fixer and noodle chef,
+      has work: six jobs, one dented coupe, and every cop in the city.
       Drive anything. Run from everyone. Try not to get busted.
+    </div>
+    <div id="title-features">
+      <span>6 STORY MISSIONS</span><span>5-STAR HEAT</span><span>STEAL ANY CAR</span>
+      <span class="alt">NEON NIGHT CITY</span><span class="alt">SKYPAK GARAGE</span><span class="alt">ENDLESS COURIER JOBS</span>
     </div>
     <div id="title-start">ENTER — Start a new game</div>
     <div id="save-line"></div>

@@ -289,7 +289,7 @@ function runGame() {
         const res = world.tryGarageService();
         if (res.ok) {
           enterPressed = false;
-          showBanner('SKYPARK GARAGE', res.shedStar
+          showBanner('SKYPAK GARAGE', res.shedStar
             ? `Repaired, resprayed, one star forgotten — -$${res.fee}`
             : `Repaired and resprayed — -$${res.fee}`);
           audio.success();
