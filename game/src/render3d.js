@@ -1,13 +1,5 @@
-// The 3D renderer: three.js draws Azura Bay at night from the same simulation the
-// top-down version ran. The world speaks in ground-plane units (x east, y south);
-// the scene maps them to (x, up, z), so a simulation angle a becomes a scene yaw of
-// -a. Nothing here touches the simulation: draw() reads the world state and the
-// frame's ui object, moves meshes and the camera, and paints.
-//
-// The night look is carried by emissive canvas textures (lit windows, neon signs),
-// instanced streetlight pools, headlight glow and blob shadows rather than shadow
-// maps or many live lights — one hemisphere light and one moon directional are
-// enough, and every frame stays cheap on any GPU.
+// The 3D renderer: three.js draws Azura Bay at night from the simulation state; nothing here
+// touches the simulation. World (x, y) maps to scene (x, up, z) and a sim angle a to yaw -a.
 import * as THREE from 'three';
 import { CITY, GARAGE, PALETTE } from './config.js';
 import { hash2 } from './geom.js';
@@ -59,11 +51,8 @@ function makeBlobTexture() {
   return new THREE.CanvasTexture(c);
 }
 
-/**
- * One building facade: a colour canvas (dark wall, dim windows) and its emissive
- * partner (only the lit windows, warm and cool). The window pattern comes from
- * hashes so a given variant looks the same on every building that wears it.
- */
+/** One building facade: a colour canvas (dark wall, dim windows) and its emissive partner (only the
+ *  lit windows, warm and cool). */
 function makeFacade(base, seed) {
   const W = 128;
   const H = 256;
@@ -165,12 +154,9 @@ function makeLabelTexture(text, color) {
   return tex;
 }
 
-/**
- * The whole city ground in one canvas texture: asphalt streets with lane dashes
- * and crosswalks, pale block pavements, the two parks, the Skypak bay paint and a
- * sand rim where the island meets the water. One texture keeps the ground to a
- * single draw call however busy the frame above it gets.
- */
+/** The whole city ground in one canvas texture: asphalt streets with lane dashes and crosswalks,
+ *  pale block pavements, the two parks, the Skypak bay paint and a sand rim where the island meets
+ *  the water. */
 function makeGroundTexture(city) {
   const S = 2048;
   const k = S / city.size;
@@ -324,9 +310,9 @@ export function createRenderer(canvas, city) {
     scene.add(moonSprite);
   }
 
-  // Buildings: a unit box raised per building, facade variants shared, the roof
-  // in the building's own (darkened) colour, a rooftop prop box where the city
-  // data carries one, and a neon sign for every named place.
+  // Buildings: a unit box raised per building, facade variants shared, the roof in the building's
+  // own (darkened) colour, a rooftop prop box where the city data carries one, and a neon sign for
+  // every named place.
   const facades = ['#3b404c', '#4c4238', '#39434f', '#4a3a46', '#36423c', '#514639']
     .map((base, i) => {
       const { map, emissiveMap } = makeFacade(base, i + 3);
@@ -491,9 +477,9 @@ export function createRenderer(canvas, city) {
   const glassMat = new THREE.MeshLambertMaterial({ color: 0x1b2638, emissive: 0x0d1626 });
   const trimMat = new THREE.MeshLambertMaterial({ color: 0x1d2026 });
   const goldMat = new THREE.MeshLambertMaterial({ color: 0xd9a83c, emissive: 0x694d10, emissiveIntensity: 0.6 });
-  // Police lights: lit and dark lenses (each cruiser picks per frame, so a column
-  // of cars strobes out of step), additive bloom sprites over the bar, and a wash
-  // of red or blue thrown on the asphalt around the car.
+  // Police lights: lit and dark lenses (each cruiser picks per frame, so a column of cars strobes
+  // out of step), additive bloom sprites over the bar, and a wash of red or blue thrown on the
+  // asphalt around the car.
   const barRedOn = new THREE.MeshBasicMaterial({ color: 0xff3b3b });
   const barRedOff = new THREE.MeshBasicMaterial({ color: 0x4a1414 });
   const barBlueOn = new THREE.MeshBasicMaterial({ color: 0x3f6dff });
@@ -1095,9 +1081,7 @@ export function createRenderer(canvas, city) {
     return { x: hitPoint.x, y: hitPoint.z };
   }
 
-  /** Paint one frame. ui: {screen, marker, objective, prompt, banner, carrying,
-   *  passenger, timer, meter, cousin, garageActive, muted, saveExists,
-   *  saveSummary, camera?}. The HUD itself is DOM (hud.js); this draws the world. */
+  /** Paint one frame. */
   function draw(world, ui) {
     const now = performance.now();
     const dt = Math.min(0.1, (now - lastNow) / 1000);

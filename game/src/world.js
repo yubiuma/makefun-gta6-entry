@@ -1,9 +1,5 @@
-// The simulation: the player on foot and in cars, civilian traffic following the street
-// grid, pedestrians on the pavements, police pursuit, bullets, particles and the camera.
-// step() advances one fixed step from a control snapshot and returns what happened as bit
-// flags, so the caller can make noise and change screens without the world knowing about
-// either. Crimes are reported to the wanted system only when a pedestrian or an officer
-// is close enough to witness them.
+// The simulation: the player on foot and in cars, civilian traffic following the street grid,
+// pedestrians on the pavements, police pursuit, bullets, particles and the camera.
 import { CAR, CITY, GARAGE, GUN, PARTICLE_POOL, PED, PLAYER, POLICE, TAIL, TRAFFIC, VIEW, WANTED } from './config.js';
 import { pick, range, rangeInt } from './random.js';
 import { angleDiff, angleTurn, circleRectResolve, clamp, dist, dist2, pointInRect } from './geom.js';
@@ -145,12 +141,8 @@ export function createWorld(random, city) {
       || segmentsCross(ax, ay, bx, by, rect.x, y2, rect.x, rect.y);
   }
 
-  /**
-   * Whether a witness at (ax, ay) can actually see the point (bx, by): a close
-   * witness always can; a farther one needs the straight line between the two
-   * to stay clear of every building. Streets are open ground, so this is what
-   * stops a witness on the far side of a block from "seeing" through it.
-   */
+  /** Whether a witness at (ax, ay) can actually see the point (bx, by): a close witness always can;
+   *  a farther one needs the straight line between the two to stay clear of every building. */
   function canSee(ax, ay, bx, by) {
     if (dist2(ax, ay, bx, by) < CLEAR_VIEW * CLEAR_VIEW) return true;
     for (const rect of city.colliders) {
@@ -461,11 +453,8 @@ export function createWorld(random, city) {
     const throttle = car.speed < targetSpeed ? 0.85 : -0.7;
     driveInputs(car, dt, targetSpeed === 0 && car.speed < 4 ? -0.4 : throttle, steer, CAR.maxSpeed, CAR.acceleration);
 
-    // Jam breaking: a car held up by another car — queued behind a wreck or locked
-    // in a nose-to-nose knot — eventually clears. (Being held up by the player or
-    // an officer does not count: that queue is honest.) Ordinary traffic is
-    // recycled to a far street, the far-traffic cleanup's trick; a routed car
-    // instead has the traffic blocking it recycled, so a tail can never deadlock.
+    // Jam breaking: a car held up by another car — queued behind a wreck or locked in a
+    // nose-to-nose knot — eventually clears.
     const heldByCar = blockerCar !== null && blockerCar.kind !== 'police' && blockerCar.driver !== 'player';
     if (heldByCar && car.health > 0 && Math.abs(car.speed) < 20) {
       car.jamTime = (car.jamTime ?? 0) + dt;
@@ -614,9 +603,8 @@ export function createWorld(random, city) {
           events |= closing > 250 ? EV_CRASH : EV_HIT;
           const other = player.car === a ? b : a;
           other.lastPlayerHitTime = state.time;
-          // Blame follows the approach: the crime counts only when the player's car
-          // was driving into the other one harder than it was driving into them.
-          // Getting rammed by a pursuer, or rear-ended at a light, is not your crime.
+          // Blame follows the approach: the crime counts only when the player's car was driving
+          // into the other one harder than it was driving into them.
           const dirx = player.car === a ? nx : -nx;
           const diry = player.car === a ? ny : -ny;
           const playerApproach = (Math.cos(player.car.angle) * player.car.speed) * dirx
@@ -964,11 +952,8 @@ export function createWorld(random, city) {
     if (index >= 0) state.cars.splice(index, 1);
   }
 
-  /**
-   * What the Skypak crew would do for the car the player is sitting in, or null when
-   * the player is not in a car in the bay. A quote with clean=true means there is
-   * nothing to fix and no heat to shed.
-   */
+  /** What the Skypak crew would do for the car the player is sitting in, or null when the player is
+   *  not in a car in the bay. */
   function garageQuote() {
     if (!player.inCar || !player.car) return null;
     const bay = garageBayPoint();
@@ -979,10 +964,7 @@ export function createWorld(random, city) {
     return { fee, shedStar, clean, cooldown: state.garage.cooldown };
   }
 
-  /**
-   * Pay the crew: full repair and one wanted star forgotten, then a cooldown.
-   * Returns {ok:true, fee, shedStar} or {ok:false, reason: 'away'|'clean'|'busy'|'cash'}.
-   */
+  /** Pay the crew: full repair and one wanted star forgotten, then a cooldown. */
   function tryGarageService() {
     const quote = garageQuote();
     if (!quote) return { ok: false, reason: 'away' };
@@ -1022,10 +1004,7 @@ export function createWorld(random, city) {
 
   // ------------------------------------------------------------ the step
 
-  /**
-   * Advance the world one fixed step. ctrl: {moveX, moveY, aimX, aimY (world coords or
-   * null), firing, sprint, enter}. Returns EV_* flags for what happened.
-   */
+  /** Advance the world one fixed step. */
   function step(dt, ctrl) {
     let events = 0;
     if (state.over) return events;
@@ -1077,9 +1056,8 @@ export function createWorld(random, city) {
     stepParticles(dt);
     stepPolice(dt);
 
-    // Seen means an officer in range with an actual view of the player: an
-    // officer stuck behind a building does not hold the heat, however close
-    // the crow flies. That is what makes breaking line of sight an escape.
+    // Seen means an officer in range with an actual view of the player: an officer stuck behind a
+    // building does not hold the heat, however close the crow flies.
     let seen = false;
     for (const car of state.cars) {
       if (car.kind === 'police' && dist2(car.x, car.y, player.x, player.y) < WANTED.sightRange * WANTED.sightRange && canSee(car.x, car.y, player.x, player.y)) {
@@ -1138,11 +1116,8 @@ export function createWorld(random, city) {
       state.cars.push(car);
       return car;
     },
-    /**
-     * Send out a routed car: it drives the streets like traffic but chooses its way at
-     * every intersection toward (destX, destY), then pulls over and parks for good.
-     * Used for the tail job's sedan. Heading east along a street, like a traffic spawn.
-     */
+    /** Send out a routed car: it drives the streets like traffic but chooses its way at every
+     *  intersection toward (destX, destY), then pulls over and parks for good. */
     spawnRouteCar(x, y, angle, destX, destY, color) {
       const car = makeCar(random, x, y, angle, 'target', color);
       car.driver = 'ai';
@@ -1154,10 +1129,8 @@ export function createWorld(random, city) {
       return car;
     },
     removeCar,
-    /**
-     * Make sure the gold Vantara S is sitting in the bank lot, whole: if it was wrecked
-     * (and the player is not sitting in the wreck), a fresh one takes its place.
-     */
+    /** Make sure the gold Vantara S is sitting in the bank lot, whole: if it was wrecked (and the
+     *  player is not sitting in the wreck), a fresh one takes its place. */
     stageShowpiece() {
       const current = state.showpiece;
       if (current && (current.health > 0 || player.car === current)) return current;

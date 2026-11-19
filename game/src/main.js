@@ -14,9 +14,9 @@ import { createWorld, EV_BUSTED, EV_CRASH, EV_ENTER, EV_EXIT, EV_HIT, EV_PED_DOW
 import { ACTION_CONFIRM, ACTION_ENTER, ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { CHAIN, cousinSpot, createMissionState, currentStep, hudExtras, markerFor, objectiveText, objectiveTitle, restoreMissions, updateMissions, failCurrentJob } from './missions.js';
-import { createRenderer } from './render3d.js';
 import { SCREEN_BUSTED, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WASTED } from './screens.js';
 import { createHud } from './hud.js';
+import { createRenderer } from './render3d.js';
 import { stageShot } from './shots.js';
 
 /** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped. */
