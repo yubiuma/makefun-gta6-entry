@@ -238,6 +238,16 @@ export function createHud() {
     } else if (ui.screen === 'wasted') {
       flash.style.background = 'rgba(30, 8, 8, 0.35)';
       flash.style.display = 'block';
+    } else if (ui.screen === 'play' && world.state.wanted.stars >= 2) {
+      // Under pursuit the screen edges pick up the light bars: red on one side,
+      // blue on the other, swapping on the strobe beat, stronger with each star.
+      const a = (0.1 + world.state.wanted.stars * 0.035).toFixed(3);
+      const swap = Math.floor(world.state.time * 3.75) % 2 === 0;
+      const red = `rgba(255, 40, 48, ${a})`;
+      const blue = `rgba(48, 92, 255, ${a})`;
+      flash.style.background = `linear-gradient(90deg, ${swap ? red : blue} 0%, transparent 16%, transparent 84%, ${swap ? blue : red} 100%),`
+        + ` linear-gradient(0deg, ${swap ? blue : red} 0%, transparent 9%)`;
+      flash.style.display = 'block';
     } else {
       flash.style.display = 'none';
     }

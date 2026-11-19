@@ -484,8 +484,22 @@ export function createRenderer(canvas, city) {
   const glassMat = new THREE.MeshLambertMaterial({ color: 0x2a3a55, transparent: true, opacity: 0.62 });
   const trimMat = new THREE.MeshLambertMaterial({ color: 0x1d2026 });
   const goldMat = new THREE.MeshLambertMaterial({ color: 0xd9a83c, emissive: 0x694d10, emissiveIntensity: 0.6 });
-  const lightBarRed = new THREE.MeshBasicMaterial({ color: 0xff4545 });
-  const lightBarBlue = new THREE.MeshBasicMaterial({ color: 0x4d7cff });
+  // Police lights: lit and dark lenses (each cruiser picks per frame, so a column
+  // of cars strobes out of step), additive bloom sprites over the bar, and a wash
+  // of red or blue thrown on the asphalt around the car.
+  const barRedOn = new THREE.MeshBasicMaterial({ color: 0xff3b3b });
+  const barRedOff = new THREE.MeshBasicMaterial({ color: 0x4a1414 });
+  const barBlueOn = new THREE.MeshBasicMaterial({ color: 0x3f6dff });
+  const barBlueOff = new THREE.MeshBasicMaterial({ color: 0x1a2340 });
+  const additive = (color, opacity) => ({
+    map: glowTex, color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const bloomRed = new THREE.SpriteMaterial(additive(0xff3030, 0.95));
+  const bloomBlue = new THREE.SpriteMaterial(additive(0x3a66ff, 0.95));
+  const washRed = new THREE.MeshBasicMaterial(additive(0xff2a2a, 0.42));
+  const washBlue = new THREE.MeshBasicMaterial(additive(0x2f5bff, 0.48));
+  const policeBlack = new THREE.MeshLambertMaterial({ color: 0x15171c });
+  const policeWhite = new THREE.MeshLambertMaterial({ color: 0xe9edf2, emissive: 0x2a2e36 });
   const patchMat = new THREE.MeshBasicMaterial({
     map: glowTex, color: 0xffedb8, transparent: true, opacity: 0.15, depthWrite: false, blending: THREE.AdditiveBlending,
   });
@@ -497,6 +511,9 @@ export function createRenderer(canvas, city) {
   const barLightGeo = new THREE.BoxGeometry(11, 3, 7.5);
   const patchGeo = new THREE.PlaneGeometry(120, 52);
   patchGeo.rotateX(-Math.PI / 2);
+  const doorsGeo = new THREE.BoxGeometry(21, 7.4, 22.6);
+  const washGeo = new THREE.PlaneGeometry(150, 150);
+  washGeo.rotateX(-Math.PI / 2);
 
   function makeCarMesh() {
     const group = new THREE.Group();
@@ -509,20 +526,31 @@ export function createRenderer(canvas, city) {
     stripe.visible = false;
     const barBase = new THREE.Mesh(barBaseGeo, trimMat);
     barBase.position.set(-1.5, 23.4, 0);
-    barBase.visible = false;
-    const barRed = new THREE.Mesh(barLightGeo, lightBarRed);
+    const barRed = new THREE.Mesh(barLightGeo, barRedOn);
     barRed.position.set(-1.5, 24.6, -5.4);
-    barRed.visible = false;
-    const barBlue = new THREE.Mesh(barLightGeo, lightBarBlue);
+    const barBlue = new THREE.Mesh(barLightGeo, barBlueOn);
     barBlue.position.set(-1.5, 24.6, 5.4);
-    barBlue.visible = false;
+    const bloomR = new THREE.Sprite(bloomRed);
+    bloomR.position.set(-1.5, 26, -6);
+    const bloomB = new THREE.Sprite(bloomBlue);
+    bloomB.position.set(-1.5, 26, 6);
+    bloomR.renderOrder = 4;
+    bloomB.renderOrder = 4;
+    const doors = new THREE.Mesh(doorsGeo, policeWhite);
+    doors.position.set(-1, 10.2, 0);
+    const wash = new THREE.Mesh(washGeo, washRed);
+    wash.position.set(0, 0.2, 0);
+    wash.renderOrder = 2;
+    const police = new THREE.Group();
+    police.add(barBase, barRed, barBlue, bloomR, bloomB, doors, wash);
+    police.visible = false;
     const patch = new THREE.Mesh(patchGeo, patchMat);
     patch.position.set(74, 0.14, 0);
     patch.renderOrder = 2;
-    group.add(body, cabin, stripe, barBase, barRed, barBlue, patch);
+    group.add(body, cabin, stripe, police, patch);
     group.visible = false;
     scene.add(group);
-    return { group, body, stripe, barBase, barRed, barBlue, patch };
+    return { group, body, cabin, stripe, police, barRed, barBlue, bloomR, bloomB, wash, patch };
   }
   const carMeshes = [];
   for (let i = 0; i < MAX_CARS; i += 1) carMeshes.push(makeCarMesh());
@@ -717,9 +745,6 @@ export function createRenderer(canvas, city) {
   // ---------------------------------------------------------- per-frame sync
 
   function syncCars(state, time) {
-    const flashPhase = Math.floor(time * 2.6) % 2 === 0;
-    lightBarRed.color.setHex(flashPhase ? 0xff4545 : 0x571616);
-    lightBarBlue.color.setHex(flashPhase ? 0x27355e : 0x4d7cff);
     let wheelI = 0;
     let glowI = 0;
     state.cars.forEach((car, i) => {
@@ -728,12 +753,24 @@ export function createRenderer(canvas, city) {
       mesh.group.visible = true;
       mesh.group.position.set(car.x, 0, car.y);
       mesh.group.rotation.y = -car.angle;
-      mesh.body.material = car.kind === 'showpiece' ? goldMat : bodyMat(car.color);
       const isPolice = car.kind === 'police';
-      mesh.stripe.visible = isPolice;
-      mesh.barBase.visible = isPolice;
-      mesh.barRed.visible = isPolice;
-      mesh.barBlue.visible = isPolice;
+      mesh.body.material = car.kind === 'showpiece' ? goldMat : isPolice ? policeBlack : bodyMat(car.color);
+      mesh.stripe.visible = false;
+      mesh.police.visible = isPolice;
+      mesh.cabin.material = isPolice ? policeWhite : glassMat;
+      if (isPolice) {
+        // Each cruiser strobes on its own beat (offset by its index): a double
+        // red flash, then a double blue, the way real bars cycle.
+        const beat = Math.floor(time * 7.5 + i * 2.7) % 8;
+        const redOn = car.health > 0 && (beat === 0 || beat === 2);
+        const blueOn = car.health > 0 && (beat === 4 || beat === 6);
+        mesh.barRed.material = redOn ? barRedOn : barRedOff;
+        mesh.barBlue.material = blueOn ? barBlueOn : barBlueOff;
+        mesh.bloomR.scale.setScalar(redOn ? 78 : 18);
+        mesh.bloomB.scale.setScalar(blueOn ? 84 : 18);
+        mesh.wash.visible = car.health > 0;
+        mesh.wash.material = beat < 4 ? washRed : washBlue;
+      }
       mesh.patch.visible = car.health > 0;
       // A wreck sits dark and low; a healthy car rides at its full height.
       mesh.group.position.y = car.health <= 0 ? -2.2 : 0;
