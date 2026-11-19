@@ -8,6 +8,14 @@ import { angleDiff, clamp } from './geom.js';
 import { airUnit } from './air.js';
 
 const MINIMAP_SIZE = 196;
+/** World units from the radar's centre to its rim. */
+const RADAR_RANGE = 470;
+/** Named places on the radar: special key, glyph, disc colour. */
+const POI_GLYPHS = [
+  ['noodle', 'D', PALETTE.npc], ['safehouse', 'R', '#c9d3e6'], ['garage', 'G', PALETTE.garage],
+  ['bank', '$', '#9fe870'], ['hospital', '+', '#ff8a8a'], ['hotel', 'H', '#c8a6e8'],
+  ['cannery', 'C', '#d9b07a'], ['marina', 'M', '#7fc6ef'], ['station', 'S', '#aab8d0'], ['market', 'P', '#b9d39a'],
+];
 
 /** Dee's phone portrait, painted once: black bob and fringe, pink jacket, phone at
  *  her ear, and the red noodle-bar neon behind her rimming one side of her face. */
@@ -140,103 +148,212 @@ export function createHud() {
 
   // ------------------------------------------------------------ the minimap
 
+  /** Radar: a disc centred on the player, heading up, about 940 world units across,
+   *  in a night palette, with POI glyphs, police cones, AIR-1 and a route to the marker. */
   function drawMinimap(world, ui, city) {
     const state = world.state;
-    const size = MINIMAP_SIZE;
-    const x = 0;
-    const y = 0;
-    mctx.clearRect(0, 0, size, size);
+    const R = MINIMAP_SIZE / 2;
+    const player = state.player;
+    const heading = player.inCar && player.car ? player.car.angle : player.angle;
+    const s = (R - 5) / RADAR_RANGE;
+    const rot = -heading - Math.PI / 2;
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    const toRadar = (wx, wy) => {
+      const dx = (wx - player.x) * s;
+      const dy = (wy - player.y) * s;
+      return [R + dx * cos - dy * sin, R + dx * sin + dy * cos];
+    };
+    const atRim = (wx, wy, inset) => {
+      const [px, py] = toRadar(wx, wy);
+      const d = Math.hypot(px - R, py - R);
+      const max = R - inset;
+      return d <= max ? [px, py, false] : [R + (px - R) * max / d, R + (py - R) * max / d, true];
+    };
+    mctx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
     mctx.save();
     mctx.beginPath();
-    mctx.roundRect(x, y, size, size, 10);
-    mctx.fillStyle = 'rgba(16, 22, 18, 0.88)';
+    mctx.arc(R, R, R - 1, 0, Math.PI * 2);
+    mctx.fillStyle = 'rgba(6, 9, 16, 0.92)';
     mctx.fill();
     mctx.clip();
-    const s = size / city.size;
-    mctx.fillStyle = '#3d4a3a';
+
+    // The streets, in world space under the radar's rotation.
+    mctx.save();
+    mctx.translate(R, R);
+    mctx.rotate(rot);
+    mctx.scale(s, s);
+    mctx.translate(-player.x, -player.y);
+    mctx.fillStyle = '#34405a';
+    mctx.fillRect(0, 0, city.size, city.size);
+    mctx.fillStyle = '#161c2b';
     for (let row = 0; row < CITY.rows; row += 1) {
       for (let col = 0; col < CITY.cols; col += 1) {
-        mctx.fillRect(x + (col * CITY.pitch + CITY.road) * s, y + (row * CITY.pitch + CITY.road) * s, CITY.block * s, CITY.block * s);
+        mctx.fillRect(col * CITY.pitch + CITY.road, row * CITY.pitch + CITY.road, CITY.block, CITY.block);
       }
     }
-    mctx.fillStyle = 'rgba(235, 230, 205, 0.15)';
-    for (const b of city.buildings) {
-      mctx.fillRect(x + b.x * s, y + b.y * s, Math.max(1.4, b.w * s), Math.max(1.4, b.h * s));
-    }
-    mctx.strokeStyle = '#9aa48f';
-    mctx.lineWidth = Math.max(1, CITY.road * s * 0.5);
+    mctx.fillStyle = '#15301f';
+    for (const park of city.parks) mctx.fillRect(park.x, park.y, park.w, park.h);
+    mctx.fillStyle = '#26304a';
+    for (const b of city.buildings) mctx.fillRect(b.x, b.y, b.w, b.h);
+    mctx.strokeStyle = 'rgba(255, 214, 120, 0.4)';
+    mctx.lineWidth = 5;
+    mctx.setLineDash([22, 18]);
     mctx.beginPath();
     for (let i = 0; i <= CITY.cols; i += 1) {
-      mctx.moveTo(x + (i * CITY.pitch + CITY.road / 2) * s, y);
-      mctx.lineTo(x + (i * CITY.pitch + CITY.road / 2) * s, y + size);
-      mctx.moveTo(x, y + (i * CITY.pitch + CITY.road / 2) * s);
-      mctx.lineTo(x + size, y + (i * CITY.pitch + CITY.road / 2) * s);
+      const c = i * CITY.pitch + CITY.road / 2;
+      mctx.moveTo(c, 0);
+      mctx.lineTo(c, city.size);
+      mctx.moveTo(0, c);
+      mctx.lineTo(city.size, c);
     }
     mctx.stroke();
+    mctx.setLineDash([]);
+    mctx.restore();
+
+    // A slow sweep and two range rings.
+    const sweep = (state.time * 1.6) % (Math.PI * 2);
+    const grad = mctx.createConicGradient(sweep, R, R);
+    grad.addColorStop(0, 'rgba(110, 200, 255, 0.22)');
+    grad.addColorStop(0.12, 'rgba(110, 200, 255, 0)');
+    grad.addColorStop(1, 'rgba(110, 200, 255, 0)');
+    mctx.fillStyle = grad;
+    mctx.fillRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+    mctx.strokeStyle = 'rgba(140, 170, 255, 0.16)';
+    mctx.lineWidth = 1;
+    for (const f of [0.36, 0.7]) {
+      mctx.beginPath();
+      mctx.arc(R, R, R * f, 0, Math.PI * 2);
+      mctx.stroke();
+    }
+
+    // Named places as glyphs.
+    mctx.font = '800 8.5px system-ui, sans-serif';
+    mctx.textAlign = 'center';
+    mctx.textBaseline = 'middle';
+    for (const [key, glyph, color] of POI_GLYPHS) {
+      const place = city.specials[key];
+      if (!place) continue;
+      const [px, py, clipped] = atRim(place.x, place.y, 8);
+      if (clipped && key !== 'garage') continue;
+      mctx.globalAlpha = clipped ? 0.6 : 1;
+      mctx.fillStyle = color;
+      mctx.beginPath();
+      mctx.arc(px, py, 6, 0, Math.PI * 2);
+      mctx.fill();
+      mctx.fillStyle = '#0b1020';
+      mctx.fillText(glyph, px, py + 0.5);
+      mctx.globalAlpha = 1;
+    }
+
+    // The route to the marker: a dashed line, and the marker pinned to the rim when far.
     if (ui.marker) {
-      const pulse = 3.4 + Math.sin(state.time * 5) * 1.1;
-      mctx.fillStyle = PALETTE.marker;
+      const [mx, my] = atRim(ui.marker.x, ui.marker.y, 9);
+      mctx.strokeStyle = 'rgba(255, 201, 62, 0.75)';
+      mctx.lineWidth = 2;
+      mctx.setLineDash([5, 4]);
+      mctx.beginPath();
+      mctx.moveTo(R, R);
+      mctx.lineTo(mx, my);
+      mctx.stroke();
+      mctx.setLineDash([]);
+      const pulse = 4.4 + Math.sin(state.time * 5) * 1.2;
       mctx.save();
-      mctx.translate(x + ui.marker.x * s, y + ui.marker.y * s);
+      mctx.translate(mx, my);
       mctx.rotate(Math.PI / 4);
+      mctx.fillStyle = PALETTE.marker;
       mctx.fillRect(-pulse / 1.4, -pulse / 1.4, pulse * 1.4, pulse * 1.4);
       mctx.restore();
     }
-    const phase = Math.floor(state.time * 2.4) % 2 === 0;
+
+    // Mission targets, police (cones facing their way), AIR-1. Dee is the D glyph.
     for (const car of state.cars) {
-      if (car.kind !== 'police') continue;
-      mctx.fillStyle = phase ? PALETTE.lightRed : PALETTE.lightBlue;
-      mctx.beginPath();
-      mctx.arc(x + car.x * s, y + car.y * s, 3.2, 0, Math.PI * 2);
-      mctx.fill();
-      mctx.fillStyle = '#ffffff';
-      mctx.beginPath();
-      mctx.arc(x + car.x * s, y + car.y * s, 1.2, 0, Math.PI * 2);
-      mctx.fill();
-    }
-    for (const car of state.cars) {
-      if (car.kind !== 'target') continue;
-      mctx.fillStyle = PALETTE.target;
+      if (car.kind !== 'target' && car.kind !== 'showpiece') continue;
+      const [tx, ty] = atRim(car.x, car.y, 6);
       mctx.save();
-      mctx.translate(x + car.x * s, y + car.y * s);
+      mctx.translate(tx, ty);
       mctx.rotate(Math.PI / 4);
-      mctx.fillRect(-3, -3, 6, 6);
+      mctx.fillStyle = car.kind === 'showpiece' ? '#e6b93d' : PALETTE.target;
+      mctx.fillRect(-3.4, -3.4, 6.8, 6.8);
       mctx.restore();
     }
-    const garagePlace = city.specials.garage;
-    mctx.fillStyle = PALETTE.garage;
-    mctx.fillRect(x + garagePlace.x * s - 3.6, y + garagePlace.y * s - 3.6, 7.2, 7.2);
-    mctx.fillStyle = '#16303a';
-    mctx.font = '800 7.5px system-ui, sans-serif';
-    mctx.textAlign = 'center';
-    mctx.fillText('G', x + garagePlace.x * s, y + garagePlace.y * s + 2.6);
-    mctx.fillStyle = PALETTE.npc;
-    mctx.beginPath();
-    mctx.arc(x + state.npc.x * s, y + state.npc.y * s, 3, 0, Math.PI * 2);
-    mctx.fill();
-    const player = state.player;
-    const angle = player.inCar && player.car ? player.car.angle : player.angle;
-    mctx.save();
-    mctx.translate(x + player.x * s, y + player.y * s);
-    mctx.rotate(angle);
+    state.cars.forEach((car, n) => {
+      if (car.kind !== 'police') return;
+      const [cx, cy, far] = atRim(car.x, car.y, 6);
+      const red = Math.floor(state.time * 3.75 + n) % 2 === 0;
+      mctx.save();
+      mctx.translate(cx, cy);
+      mctx.rotate(car.angle + rot);
+      if (!far) {
+        mctx.fillStyle = red ? 'rgba(255, 69, 69, 0.18)' : 'rgba(77, 124, 255, 0.2)';
+        mctx.beginPath();
+        mctx.moveTo(0, 0);
+        mctx.arc(0, 0, 26, -0.45, 0.45);
+        mctx.closePath();
+        mctx.fill();
+      }
+      mctx.fillStyle = red ? PALETTE.lightRed : PALETTE.lightBlue;
+      mctx.beginPath();
+      mctx.moveTo(6, 0);
+      mctx.lineTo(-4, -4);
+      mctx.lineTo(-4, 4);
+      mctx.closePath();
+      mctx.fill();
+      mctx.restore();
+    });
+    const air = airUnit(state);
+    if (air) {
+      const [hx, hy] = atRim(air.x, air.y, 8);
+      const [lx, ly] = toRadar(air.lightX, air.lightY);
+      mctx.fillStyle = 'rgba(220, 235, 255, 0.25)';
+      mctx.beginPath();
+      mctx.arc(lx, ly, 9, 0, Math.PI * 2);
+      mctx.fill();
+      mctx.save();
+      mctx.translate(hx, hy);
+      mctx.rotate(air.rotor * 0.2);
+      mctx.strokeStyle = '#e8f0ff';
+      mctx.lineWidth = 1.6;
+      mctx.beginPath();
+      mctx.moveTo(-7, 0); mctx.lineTo(7, 0);
+      mctx.moveTo(0, -7); mctx.lineTo(0, 7);
+      mctx.stroke();
+      mctx.restore();
+      mctx.fillStyle = '#e8f0ff';
+      mctx.beginPath();
+      mctx.arc(hx, hy, 2.6, 0, Math.PI * 2);
+      mctx.fill();
+    }
+
+    // The player, always at the centre, always pointing up.
     mctx.fillStyle = '#ffffff';
     mctx.beginPath();
-    mctx.moveTo(7, 0);
-    mctx.lineTo(-5, -4.6);
-    mctx.lineTo(-5, 4.6);
+    mctx.moveTo(R, R - 8);
+    mctx.lineTo(R - 5.5, R + 6);
+    mctx.lineTo(R, R + 3);
+    mctx.lineTo(R + 5.5, R + 6);
     mctx.closePath();
     mctx.fill();
     mctx.restore();
-    mctx.restore();
+
+    // The rim: red and blue on the strobe beat while wanted, and north riding it.
+    const wanted = state.wanted.stars > 0;
+    const beat = Math.floor(state.time * 3.75) % 2 === 0;
     mctx.beginPath();
-    mctx.roundRect(x, y, size, size, 10);
-    mctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-    mctx.lineWidth = 1.6;
+    mctx.arc(R, R, R - 1.5, 0, Math.PI * 2);
+    mctx.strokeStyle = wanted ? (beat ? 'rgba(255, 69, 69, 0.85)' : 'rgba(77, 124, 255, 0.85)') : 'rgba(140, 170, 255, 0.5)';
+    mctx.lineWidth = wanted ? 2.6 : 1.8;
     mctx.stroke();
-    mctx.font = '700 11px system-ui, sans-serif';
-    mctx.fillStyle = 'rgba(255,255,255,0.75)';
-    mctx.textAlign = 'left';
-    mctx.fillText('N', x + size - 14, y + 16);
+    const north = rot - Math.PI / 2;
+    const nx = R + Math.cos(north) * (R - 10);
+    const ny = R + Math.sin(north) * (R - 10);
+    mctx.fillStyle = 'rgba(6, 9, 16, 0.9)';
+    mctx.beginPath();
+    mctx.arc(nx, ny, 7, 0, Math.PI * 2);
+    mctx.fill();
+    mctx.fillStyle = '#ffffff';
+    mctx.font = '800 10px system-ui, sans-serif';
+    mctx.fillText('N', nx, ny + 0.5);
   }
 
   // ------------------------------------------------------------ the arrow
