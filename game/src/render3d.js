@@ -266,7 +266,7 @@ export function createRenderer(canvas, city) {
   // Water all around, and the island slab the city stands on.
   const water = new THREE.Mesh(
     new THREE.PlaneGeometry(11000, 11000),
-    new THREE.MeshLambertMaterial({ color: 0x0d2032 }),
+    new THREE.MeshLambertMaterial({ color: 0x0f2638, emissive: 0x06121e }),
   );
   water.rotation.x = -Math.PI / 2;
   water.position.set(city.size / 2, -3, city.size / 2);
@@ -419,6 +419,87 @@ export function createRenderer(canvas, city) {
       canopies.setMatrixAt(i, dummy.matrix);
     });
     scene.add(trunks, canopies);
+  }
+
+  // The port, on the east shore by the Marina and the Cannery: a quay, container
+  // stacks, a docked feeder ship, gantry cranes with booms out over the bay and
+  // blinking aviation lights, and the far shore's lights across the water.
+  const E = city.size + 75;
+  const portLights = [];
+  {
+    const quay = new THREE.Mesh(new THREE.BoxGeometry(170, 6, city.size + 150), new THREE.MeshLambertMaterial({ color: 0x2c2f36 }));
+    quay.position.set(E + 85, -3, city.size / 2);
+    scene.add(quay);
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(4, 1.2, city.size + 150), new THREE.MeshBasicMaterial({ color: 0xc9a43a }));
+    edge.position.set(E + 168, 0.6, city.size / 2);
+    scene.add(edge);
+    // Containers: instanced boxes, three high at most, colours from a hash of the slot.
+    const BOX_COLORS = [0x8e3b2e, 0x2f5f8a, 0x3f7a4c, 0xb8742e, 0x6d6f78, 0x8a2f55];
+    const slots = [];
+    for (let row = 0; row < 3; row += 1) {
+      for (let z = 60; z < city.size; z += 66) {
+        const h = Math.floor(hash2(row * 97 + 5, z) * 4);
+        for (let k = 0; k < h; k += 1) slots.push([E + 30 + row * 28, 13 + k * 26, z, BOX_COLORS[Math.floor(hash2(z, row * 13 + k) * BOX_COLORS.length)]]);
+      }
+    }
+    const boxes = new THREE.InstancedMesh(new THREE.BoxGeometry(24, 25, 60), new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x111318 }), slots.length);
+    const m = new THREE.Object3D();
+    slots.forEach(([x, y, z, col], i) => {
+      m.position.set(x, y, z);
+      m.updateMatrix();
+      boxes.setMatrixAt(i, m.matrix);
+      boxes.setColorAt(i, new THREE.Color(col));
+    });
+    scene.add(boxes);
+    // A feeder ship alongside, its deck stacked too.
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(90, 34, 560), new THREE.MeshLambertMaterial({ color: 0x1d2633, emissive: 0x0b0f16 }));
+    hull.position.set(E + 225, 8, 1050);
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(70, 46, 46), new THREE.MeshLambertMaterial({ color: 0xd8d8d0, emissive: 0x3a3a36 }));
+    bridge.position.set(E + 225, 48, 820);
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(76, 26, 380), new THREE.MeshLambertMaterial({ color: 0x8e3b2e, emissive: 0x1a0c0a }));
+    deck.position.set(E + 225, 38, 1110);
+    scene.add(hull, bridge, deck);
+    // Gantry cranes: four legs, a portal beam, a boom out over the water and a
+    // short back-jib, painted red and white; floodlights under the boom.
+    const red = new THREE.MeshLambertMaterial({ color: 0xb2382b, emissive: 0x3a0e0a });
+    const white = new THREE.MeshLambertMaterial({ color: 0xe6e3da, emissive: 0x3a3936 });
+    const part = (g, w, h, d, mat, x, y, z) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      mesh.position.set(x, y, z);
+      g.add(mesh);
+    };
+    const floodTex = new THREE.SpriteMaterial({ map: glowTex, color: 0xffd9a0, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+    const aviation = new THREE.SpriteMaterial({ map: glowTex, color: 0xff2a20, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+    [380, 760, 1340, 1720].forEach((z, n) => {
+      const g = new THREE.Group();
+      for (const lx of [0, 110]) for (const lz of [-26, 26]) part(g, 7, 150, 7, n % 2 ? white : red, lx, 75, lz);
+      part(g, 122, 14, 62, red, 55, 156, 0);
+      part(g, 300, 10, 14, n % 2 ? red : white, 230, 172, 0);
+      part(g, 90, 10, 14, red, -40, 172, 0);
+      part(g, 30, 24, 30, white, -70, 160, 0);
+      part(g, 16, 70, 6, red, 55, 200, 0);
+      for (const fx of [140, 260]) {
+        const flood = new THREE.Sprite(floodTex);
+        flood.position.set(fx, 162, 0);
+        flood.scale.setScalar(46);
+        g.add(flood);
+      }
+      const beacon = new THREE.Sprite(aviation);
+      beacon.position.set(55, 238, 0);
+      beacon.scale.setScalar(34);
+      g.add(beacon);
+      portLights.push({ beacon, phase: n * 0.37 });
+      g.position.set(E + 40, 0, z);
+      scene.add(g);
+    });
+    // The far shore across the bay: a band of tiny lights that the fog leaves alone.
+    const far = [];
+    for (let i = 0; i < 420; i += 1) {
+      far.push(E + 1700 + hash2(i, 3) * 500, 4 + hash2(i, 7) ** 2 * 120, -600 + hash2(i, 11) * (city.size + 1200));
+    }
+    const farGeo = new THREE.BufferGeometry();
+    farGeo.setAttribute('position', new THREE.Float32BufferAttribute(far, 3));
+    scene.add(new THREE.Points(farGeo, new THREE.PointsMaterial({ color: 0xffd9a0, size: 2.2, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.75 })));
   }
 
   // ---------------------------------------------------------- dynamic things
@@ -1091,6 +1172,7 @@ export function createRenderer(canvas, city) {
     syncPeople(state, ui, state.time);
     syncEffects(state, ui, state.time);
     syncAir(state, state.time);
+    for (const { beacon, phase } of portLights) beacon.visible = (state.time * 0.8 + phase) % 1 < 0.5;
     placeCamera(world, ui, dt);
     renderer.render(scene, camera);
   }

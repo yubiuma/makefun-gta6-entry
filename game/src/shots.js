@@ -89,7 +89,7 @@ function stageStart(world, city) {
 }
 
 /** Mid-errand: Rook in Dee's coupe in moving traffic, the cannery run on the HUD,
- *  rolling past the noodle bar and Rook's own place, both signs in frame. */
+ *  Dee on the phone, and the port's cranes lit up where the street meets the bay. */
 function stageDrive(world, missions, city) {
   const noodle = city.specials.noodle;
   // Walk up to Dee: the first mission starts, exactly as it does in play.
@@ -97,18 +97,19 @@ function stageDrive(world, missions, city) {
   updateMissions(missions, world, city);
   const coupe = world.state.coupe;
   const laneY = streetCenterY(4) + TRAFFIC.laneOffset; // the eastbound lane below the noodle bar
-  coupe.x = 950;
+  // Two blocks east of Dee's door, heading for the Cannery: the street ends on the port.
+  coupe.x = 1510;
   coupe.y = laneY;
   coupe.angle = 0;
   coupe.speed = 228;
   // Company on the road: one car ahead in lane, one coming the other way, one behind.
   const traffic = world.state.cars.filter((car) => car.kind === 'traffic');
-  stageTraffic(traffic[0], 1330, laneY, 1, 205, 4, 5);
-  stageTraffic(traffic[1], 1520, streetCenterY(4) - TRAFFIC.laneOffset, -1, 198, 4, 3);
-  stageTraffic(traffic[2], 740, laneY, 1, 218, 4, 4);
+  stageTraffic(traffic[0], 1890, laneY, 1, 205, 4, 7);
+  stageTraffic(traffic[1], 2080, streetCenterY(4) - TRAFFIC.laneOffset, -1, 198, 4, 5);
+  stageTraffic(traffic[2], 1300, laneY, 1, 218, 4, 6);
   placePeds(world, [
-    [1050, noodle.y - 7],
-    [1230, noodle.y + 95],
+    [1610, noodle.y - 7],
+    [1790, noodle.y + 95],
   ], 5);
   world.putPlayerInCar(coupe);
   updateMissions(missions, world, city); // the enterCoupe step completes, as in play
